@@ -1,0 +1,1126 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Analisador de Cronograma</title>
+<style>
+:root{
+  --bg:#f5f6f8;--card:#fff;--ink:#1c2430;--mute:#667085;--line:#e3e6eb;--acc:#1f5fbf;--acc-soft:#e8f0fc;
+  --ok:#15803d;--warn:#b45309;--bad:#c62828;--plan:#1f5fbf;--real:#e07a00;--fc:#8a94a6;--grid:#e8eaee;
+  --done:#2e9e5b;--prog:#2f6fd0;--todo:#b8bfcc;--late:#d64545;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#12161c;--card:#1b212b;--ink:#e8ecf2;--mute:#97a1b2;--line:#2b3340;--acc:#6aa3ff;--acc-soft:#1f2c44;
+  --ok:#4cc27d;--warn:#e0a040;--bad:#ff7b72;--plan:#6aa3ff;--real:#ffa94d;--fc:#7d8799;--grid:#262e3a;
+  --done:#3fb872;--prog:#5b92ee;--todo:#4a5364;--late:#ff6b6b;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "Segoe UI",system-ui,sans-serif}
+header{background:var(--card);border-bottom:1px solid var(--line);padding:12px 20px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
+header .file{color:var(--mute);font-size:13px}
+.spacer{flex:1}
+#ctls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+label.ctl{display:flex;gap:6px;align-items:center;color:var(--mute);font-size:12.5px}
+input,select,button{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
+button{cursor:pointer}button:hover{border-color:var(--acc)}
+button.pri{background:var(--acc);color:#fff;border-color:var(--acc)}
+nav{display:flex;gap:2px;padding:0 20px;background:var(--card);border-bottom:1px solid var(--line);overflow-x:auto}
+nav button{border:0;border-bottom:2px solid transparent;border-radius:0;padding:10px 14px;background:none;color:var(--mute);white-space:nowrap}
+nav button.on{color:var(--acc);border-bottom-color:var(--acc);font-weight:600}
+main{padding:20px;max-width:1500px;margin:0 auto}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:56px 24px;text-align:center;background:var(--card);margin:40px auto;max-width:720px}
+.drop.over{border-color:var(--acc);background:var(--acc-soft)}
+.drop h2{margin:0 0 8px;font-size:20px}.drop p{color:var(--mute);margin:6px 0}
+.grid{display:grid;gap:12px}
+.kpis{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.kpi .l{color:var(--mute);font-size:12px}.kpi .v{font-size:24px;font-weight:650;margin-top:2px;font-variant-numeric:tabular-nums}
+.kpi .s{color:var(--mute);font-size:12px;margin-top:2px}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}.mute{color:var(--mute)}
+h3{margin:22px 0 8px;font-size:14.5px}
+h3:first-child{margin-top:0}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:1000px){.cols{grid-template-columns:1fr}}
+.tools{display:flex;gap:8px;align-items:center;margin:0 0 6px;flex-wrap:wrap}
+.tw{overflow:auto;max-height:560px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:5px 9px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+td.wrap{white-space:normal;min-width:260px}
+th{position:sticky;top:0;background:var(--card);cursor:pointer;color:var(--mute);font-weight:600;font-size:12px;z-index:1;user-select:none}
+th:hover{color:var(--ink)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+tr:hover td{background:var(--acc-soft)}
+tr.sum td{font-weight:600;background:color-mix(in srgb,var(--line) 35%,transparent)}
+.tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11.5px;font-weight:600}
+.t-done{background:color-mix(in srgb,var(--done) 18%,transparent);color:var(--done)}
+.t-prog{background:color-mix(in srgb,var(--prog) 18%,transparent);color:var(--prog)}
+.t-todo{background:color-mix(in srgb,var(--todo) 25%,transparent);color:var(--mute)}
+.t-late{background:color-mix(in srgb,var(--late) 18%,transparent);color:var(--late)}
+.t-crit{background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)}
+.bar{height:8px;background:var(--grid);border-radius:4px;overflow:hidden;min-width:90px;position:relative}
+.bar i{display:block;height:100%;background:var(--prog)}
+.bar b{position:absolute;top:-2px;width:2px;height:12px;background:var(--ink);opacity:.7}
+.stack{display:flex;height:22px;border-radius:6px;overflow:hidden;margin:6px 0}
+.stack div{height:100%}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--mute)}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;background:var(--c);vertical-align:-1px}
+.note{background:var(--acc-soft);border-radius:8px;padding:9px 12px;font-size:12.5px;color:var(--ink);margin:0 0 12px}
+.chartwrap{position:relative}
+svg text{fill:var(--mute);font-size:11px}
+.tip{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.15);display:none;white-space:nowrap;z-index:3}
+.chk{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.chk .card{cursor:pointer}.chk .card.on{border-color:var(--acc);background:var(--acc-soft)}
+.chk .big{font-size:22px;font-weight:650}
+.toggle{cursor:pointer;display:inline-block;width:16px;color:var(--mute)}
+#loading{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:20;align-items:center;justify-content:center;color:#fff;font-size:18px}
+.gcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin:8px 0 18px}
+.gc{position:relative;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px 6px}
+.gc .hd{display:flex;gap:8px;align-items:flex-start;justify-content:space-between;min-height:44px;padding-right:18px}
+.gc .ttl{font-size:12px;font-weight:600;letter-spacing:.2px;text-transform:uppercase;line-height:1.25;cursor:pointer;min-width:0;overflow-wrap:normal;word-break:normal;font-size:11px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.gc .ttl:hover{color:var(--acc)}
+.gc .bd{flex:none;color:#fff;border-radius:4px;padding:3px 7px;font-size:10.5px;font-weight:600;text-align:center;line-height:1.3}
+.gc .rm{position:absolute;top:4px;right:6px;border:0;background:none;color:var(--mute);padding:0 4px;font-size:16px;line-height:1}
+.gc svg{display:block;width:100%;margin-top:2px}
+.gc svg text{fill:var(--ink)}.gc svg .mut{fill:var(--mute);font-size:10px}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+
+.opw{position:relative;overflow:hidden;width:100%}
+.pgw{display:none}.pgw.cur{display:block}
+.pgtabs{display:flex;gap:4px;margin:6px 0 10px;border-bottom:1px solid var(--line)}.pgtabs button{border:0;border-bottom:3px solid transparent;border-radius:0;background:none;padding:8px 16px;font-weight:600;color:var(--mute)}.pgtabs button.on{color:var(--acc);border-bottom-color:var(--acc)}
+.stage{--card:#fff;--ink:#14181f;--mute:#5b6577;--line:#cfd4dc;--grid:#e6e9ee;--plan:#2f8cf0;--fc:#1226a0;--real:#22b24c;--acc:#1226a0;
+  width:1600px;height:900px;display:grid;grid-template-rows:46px 1fr;gap:8px;padding:8px;background:#fff;color:var(--ink);box-sizing:border-box;border:1px solid var(--line);transform-origin:top left;font-family:"Segoe UI",system-ui,sans-serif}
+.stage *{box-sizing:border-box}
+.sh{background:#1226a0;color:#fff;display:flex;align-items:center;padding:0 16px;gap:16px;border-radius:4px}
+.sh input{background:transparent;border:0;color:#fff;font:inherit;outline:none;padding:0}
+.sweek{width:380px;font-size:15px;font-weight:600}
+.stt{flex:1}.stt input{width:100%;text-align:center;font-size:22px;font-weight:600}
+.stage.cov{grid-template-rows:46px 1fr 40px}.covph{border-radius:0;border:0}.stage.cov .ph img{object-fit:cover}.sf{justify-content:center}.sf .stt span{display:block;text-align:center;font-weight:700;font-size:18px}
+.dgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:minmax(0,1fr) minmax(0,1fr) minmax(0,2.3fr);gap:8px;min-height:0}
+.dgrid>*{min-height:0;overflow:hidden}.cell{display:flex}.cell>.gc{width:100%}
+.dpics{flex:1;min-height:0;display:grid;gap:6px;padding:6px}.dpics .ph{min-height:0}
+.sbody{display:grid;grid-template-columns:780px 1fr;gap:8px;min-height:0}
+.sl{display:grid;grid-template-rows:380px 1fr;gap:8px;min-height:0}
+.sg{display:grid;gap:8px;min-height:0;overflow:hidden}
+.sg>*{min-height:0;overflow:hidden}
+.sl{overflow:hidden}.sr{overflow:hidden}
+.sb{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-height:0}
+.box{border:1px solid var(--line);border-radius:8px;display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#fff}
+.bh{background:#1226a0;color:#fff;font-size:13px;font-weight:600;padding:5px 10px;flex:none}
+.box textarea{flex:1;border:0;resize:none;padding:8px 10px;font-family:inherit;color:#14181f;background:#fff;outline:none;line-height:1.35}
+.cvb{flex:1;min-height:0;padding:4px 6px;display:flex;flex-direction:column}.cvb svg{flex:1;min-height:0;width:100%}
+.lg2{display:flex;gap:14px;justify-content:center;font-size:11px;color:var(--mute);padding-bottom:4px}
+.lg2 span::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;background:var(--c)}
+.sr{display:grid;gap:8px;min-height:0}
+.ph{position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#f3f5f8;cursor:pointer;min-height:0}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph .phh{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#8a94a6;font-size:14px;text-align:center;padding:10px}
+.ph.has .phh{display:none}.ph.over{outline:3px solid #2f8cf0}
+.ph .prm{position:absolute;top:6px;right:6px;display:none;background:#fff}
+.ph.has:hover .prm{display:block}
+.stage .gc{height:100%;display:flex;flex-direction:column;padding:8px 10px 4px}
+.stage .gc svg{flex:1;min-height:0;width:100%}
+.stage .gc .ttl{font-size:14px;color:#14181f}
+.stage .gc .bd{font-size:11.5px}
+.mgr td,.mgr th{padding:4px 8px}
+.cedit{display:flex;flex-direction:column;gap:5px;margin-bottom:8px}.ce{display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:5px 8px}
+.chip{display:inline-flex;gap:4px;align-items:center;background:var(--acc-soft);border-radius:12px;padding:2px 4px 2px 9px;font-size:12px}.chip button{border:0;background:none;padding:0 4px;color:var(--mute);cursor:pointer}
+@media print{
+  @page{size:1600px 900px;margin:0}
+  html,body{background:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  header,nav,.noprint,.prm{display:none!important}
+  main{padding:0!important;max-width:none!important}
+  .pgw{display:block!important;break-after:page;page-break-after:always}.pgw:last-child{break-after:auto;page-break-after:auto}
+  .opw{height:900px!important;overflow:visible}
+  .stage{transform:none!important;border:0}
+  .ph .phh{display:none}
+}
+</style>
+</head>
+<body>
+<div id="loading">Lendo o cronograma…</div>
+<header>
+  <h1>Analisador de Cronograma</h1>
+  <span class="file" id="fname"></span>
+  <span class="spacer"></span>
+  <span id="ctls"></span>
+</header>
+<nav id="nav"></nav>
+<main id="view"></main>
+<input type="file" id="fileIn" accept=".xml" multiple hidden>
+<input type="file" id="fileAdd" accept=".xml" multiple hidden>
+<input type="file" id="phIn" accept="image/*" hidden>
+<input type="file" id="bkIn" accept=".json" hidden>
+<input type="file" id="fileCmp" accept=".xml" hidden>
+
+<script>
+'use strict';
+/* ============ utilidades ============ */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const DAY=864e5;
+const pd=s=>s?new Date(s):null;
+const sod=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate());
+const eod=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate(),23,59,59);
+const fd=d=>d?d.toLocaleDateString('pt-BR'):'';
+const nf=(v,dp=1)=>v==null||isNaN(v)?'':v.toLocaleString('pt-BR',{minimumFractionDigits:dp,maximumFractionDigits:dp});
+const dd=(a,b)=>Math.round((sod(a)-sod(b))/DAY);
+const hrs=s=>{const m=/PT(\d+)H(\d+)M(\d+)S/.exec(s||'');return m?(+m[1])+(+m[2])/60:0};
+const isoDay=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const frac=(a,b,d)=>{ if(!a||!b) return 0; if(d>=b) return 1; if(d<=a) return 0; return (d-a)/(b-a); };
+
+/* ============ leitura do XML (MSPDI) ============ */
+function parseMSP(text){
+  const doc=new DOMParser().parseFromString(text,'application/xml');
+  if(doc.querySelector('parsererror')) throw new Error('O arquivo não é um XML válido.');
+  const root=doc.documentElement;
+  if(root.localName!=='Project') throw new Error('Este XML não parece ser do MS Project (formato MSPDI). Use Arquivo > Salvar como > XML.');
+  const P={info:{},tasks:[],res:{},assign:{},fields:{},tp:{}};
+  const kids=(el,n)=>[...el.children].filter(c=>c.localName===n);
+  for(const c of root.children) if(!c.children.length) P.info[c.localName]=c.textContent;
+  for(const sec of root.children){
+    const ln=sec.localName;
+    if(ln==='ExtendedAttributes'){
+      for(const e of sec.children){const o={};for(const c of e.children)o[c.localName]=c.textContent;P.fields[o.FieldID]=o.Alias||o.FieldName||o.FieldID;}
+    } else if(ln==='Resources'){
+      for(const r of sec.children){const o={};for(const c of r.children)if(!c.children.length)o[c.localName]=c.textContent;P.res[o.UID]=o.Name||'';}
+    } else if(ln==='Assignments'){
+      for(const a of sec.children){const o={},tp=[];for(const c of a.children){
+          if(c.localName==='TimephasedData'){const q={};for(const x of c.children)q[x.localName]=x.textContent;if(q.Type==='2'||q.Type==='4')tp.push({ty:+q.Type,s:pd(q.Start),f:pd(q.Finish),h:hrs(q.Value)});}
+          else if(!c.children.length)o[c.localName]=c.textContent;}
+        if(tp.length)(P.tp[o.TaskUID]=P.tp[o.TaskUID]||[]).push(...tp);
+        if(+o.ResourceUID>0&&P.res[o.ResourceUID]!==undefined) (P.assign[o.TaskUID]=P.assign[o.TaskUID]||[]).push(P.res[o.ResourceUID]||('Recurso '+o.ResourceUID));}
+    } else if(ln==='Tasks'){
+      for(const el of sec.children){
+        const o={ext:{},preds:[],base:null};
+        for(const c of el.children){
+          const n=c.localName;
+          if(n==='PredecessorLink'){const p={};for(const x of c.children)p[x.localName]=x.textContent;o.preds.push({uid:+p.PredecessorUID,type:+p.Type,lag:(+p.LinkLag||0)/10/60});}
+          else if(n==='Baseline'){const b={};for(const x of c.children)b[x.localName]=x.textContent;if(b.Number==='0'||o.base===null)o.base=b;}
+          else if(n==='ExtendedAttribute'){let id,v;for(const x of c.children){if(x.localName==='FieldID')id=x.textContent;if(x.localName==='Value')v=x.textContent;}o.ext[id]=v;}
+          else if(!c.children.length) o[n]=c.textContent;
+        }
+        P.tasks.push(o);
+      }
+    }
+  }
+  if(!P.tasks.length) throw new Error('Nenhuma tarefa encontrada no arquivo.');
+  return P;
+}
+
+function build(P){
+  const mpd=(+P.info.MinutesPerDay||480)/60;
+  const T=[],byUid=new Map();
+  const stack=[];
+  for(const t of P.tasks){
+    if(t.IsNull==='1') continue;
+    const o={
+      uid:+t.UID,id:+t.ID,name:(t.Name||'').trim(),wbs:t.WBS||'',lvl:+t.OutlineLevel||0,
+      sum:t.Summary==='1',crit:t.Critical==='1',pct:+t.PercentComplete||0,
+      start:pd(t.Start),finish:pd(t.Finish),as:pd(t.ActualStart),af:pd(t.ActualFinish),
+      dur:hrs(t.Duration)/mpd,work:hrs(t.Work),aw:hrs(t.ActualWork),bw:t.base?hrs(t.base.Work):0,tpA:(P.tp[t.UID]||[]).filter(x=>x.ty===2),tpB:(P.tp[t.UID]||[]).filter(x=>x.ty===4),cost:+t.Cost||0,
+      slack:(+t.TotalSlack||0)/10/60/mpd,constr:+t.ConstraintType||0,
+      preds:t.preds,res:P.assign[t.UID]||[],ext:t.ext,
+      bs:t.base?pd(t.base.Start):null,bf:t.base?pd(t.base.Finish):null,
+      kids:[],succ:0
+    };
+    o.ms=t.Milestone==='1'||(!o.sum&&o.dur===0);
+    o.leaf=!o.sum;
+    o.parent=o.lvl>0?(stack[o.lvl-1]||null):null;
+    o.path=o.parent?[...o.parent.path,o]:[o];
+    stack.length=o.lvl;stack[o.lvl]=o;
+    if(o.parent)o.parent.kids.push(o);
+    T.push(o);byUid.set(o.uid,o);
+  }
+  for(const t of T)for(const p of t.preds){const q=byUid.get(p.uid);if(q)q.succ++;}
+  const info=P.info;
+  return {P,T,byUid,leaves:T.filter(t=>t.leaf),mpd,
+    title:info.Title||info.Name||'Projeto',
+    status:info.StatusDate?pd(info.StatusDate):null,
+    pStart:pd(info.StartDate),pFinish:pd(info.FinishDate),
+    hasBase:T.some(t=>t.bs&&t.leaf),lastFinish:T.filter(t=>t.leaf).reduce((a,t)=>!a||t.finish>a?t.finish:a,null),fields:P.fields};
+}
+
+/* ============ estado ============ */
+let M=null,CMP=null;
+const TH_COL={ok:'#2e9e5b',warn:'#d68a00',bad:'#d64545'};
+function saveCards(){try{localStorage.setItem('ac:'+M.title,JSON.stringify({c:S.cards,t:S.thr}));}catch(e){}}
+function loadCards(){
+  let sv=null;try{sv=JSON.parse(localStorage.getItem('ac:'+M.title));}catch(e){}
+  if(sv&&Array.isArray(sv.c)){S.cards=sv.c.filter(u=>M.byUid.has(u));if(sv.t)S.thr=sv.t;}
+  else{S.cards=M.T.filter(t=>t.sum&&t.lvl<=1).map(t=>t.uid);}
+}
+function gauge(o){
+  const real=Math.max(0,Math.min(100,o.real||0)),prev=o.prev==null?null:Math.max(0,Math.min(100,o.prev));
+  const ad=o.ad!=null?o.ad:prev>0?real/prev*100:100;
+  const st=ad>=S.thr.ok?'ok':ad>=S.thr.warn?'warn':'bad',col=TH_COL[st];
+  const cx=140,cy=108,r=78,sw=28;
+  const pt=(p,rr)=>{const a=Math.PI*(1-p/100);return[cx+rr*Math.cos(a),cy-rr*Math.sin(a)];};
+  const arc=p=>{if(p<=0)return'';p=Math.min(p,99.99);const a=pt(0,r),b=pt(p,r);return `M${a[0].toFixed(1)} ${a[1].toFixed(1)}A${r} ${r} 0 0 1 ${b[0].toFixed(1)} ${b[1].toFixed(1)}`;};
+  let mk='';
+  if(prev!=null){const a=pt(prev,r-sw/2-3),b=pt(prev,r+sw/2+3),l=pt(prev,r+sw/2+13);
+    mk=`<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#1f4fd8" stroke-width="3"/><text x="${l[0]}" y="${prev>=90||prev<=10?l[1]-7:l[1]+3}" text-anchor="${prev>=90?'start':prev<=10?'end':'middle'}" style="font-size:11px;font-weight:600;fill:#1f4fd8">${nf(prev,0)}%</text>`;}
+  const dt=o.max?fd(o.max):'';
+  const rm=o.rm!=null?`<button class="rm noprint" ${o.rmAttr||'data-cardrm'}="${o.rm}" title="Remover">×</button>`:'';
+  return `<div class="gc"><div class="hd"><div class="ttl" ${o.scope!=null?`data-cardscope="${o.scope}"`:''} title="${esc(o.tip||o.title)}">${esc(o.title)}</div>
+    <div class="bd" style="background:${col}">Aderência ${nf(ad,0)}%<br>${esc(o.label||'Término')} ${dt}</div></div>${rm}
+    <svg viewBox="0 0 280 128"><path d="${arc(100)}" fill="none" stroke="var(--grid)" stroke-width="${sw}"/>
+    <path d="${arc(real)}" fill="none" stroke="${col}" stroke-width="${sw}"/>${mk}
+    <text x="${cx}" y="${cy-8}" text-anchor="middle" style="font-size:30px;font-weight:600">${nf(real,0)}%</text>
+    <text class="mut" x="${cx-r}" y="${cy+14}" text-anchor="middle">0%</text><text class="mut" x="${cx+r}" y="${cy+14}" text-anchor="middle">100%</text></svg></div>`;
+}
+function viewCards(){
+  const sums=M.T.filter(t=>t.sum);
+  return `<h3>Cards por estrutura (realizado × linha de base)</h3>
+  <div class="tools"><select id="cardSel" style="max-width:420px">${sums.map(t=>`<option value="${t.uid}">${'\u00a0\u00a0'.repeat(Math.max(0,t.lvl-1))}${esc(t.lvl===0?t.name+' (projeto)':t.wbs+' – '+t.name)}</option>`).join('')}</select>
+    <button id="cardAdd" class="pri">Adicionar card</button><button data-cardlvl="1">+ todos do nível 1</button><button data-cardlvl="2">+ todos do nível 2</button><button id="cardClear">Limpar</button>
+    <span class="spacer"></span>
+    <label class="ctl"><span class="sw" style="background:${TH_COL.ok}"></span>aderente ≥ <input type="number" id="thrOk" value="${S.thr.ok}" style="width:60px">%</label>
+    <label class="ctl"><span class="sw" style="background:${TH_COL.warn}"></span>atenção ≥ <input type="number" id="thrWarn" value="${S.thr.warn}" style="width:60px">%</label>
+    <label class="ctl"><span class="sw" style="background:${TH_COL.bad}"></span>abaixo = não aderente</label></div>
+  <div class="note">Número grande e preenchimento = realizado. Marca azul = previsto na ${baseLabel()}. Aderência = realizado ÷ previsto. Clique no título para ver a curva S daquela estrutura.</div>
+  <div class="gcards">${S.cards.map(u=>M.byUid.get(u)).filter(Boolean).map(t=>gauge({title:t.lvl===0?t.name:t.wbs+' '+t.name,tip:t.wbs+' '+t.name,real:t.real,prev:t.prev,max:t.max,rm:t.uid,scope:t.uid})).join('')||'<div class="mute">Nenhum card. Escolha uma estrutura e clique em Adicionar.</div>'}</div>`;
+}
+const S={fl:{ini:{a:'',b:''},ter:{a:'',b:''},q:'',c:new Set()},models:[],opCards:null,opCurve:'all',op:{title:'',week:'',obs:'Pontos críticos:\n\nAtividades concluídas:\n\nEm andamento:\n\nPróximos passos:\n',nPhotos:5,fs:13},cards:[],thr:{ok:95,warn:85},tab:'resumo',cutoff:null,weight:'dur',real:'pct',base:'auto',late:'all',slackMax:10,critMode:'crit',
+  group:'wbs1',msFilter:'all',chk:null,collapsed:new Set(),initCollapse:true,sort:{},filter:{},treeQ:''};
+
+/* ============ análise ============ */
+let A=null;
+function baseSource(){
+  if(S.base==='baseline'&&M.hasBase)return 'baseline';
+  if(S.base==='compare'&&CMP)return 'compare';
+  if(S.base==='atual')return 'atual';
+  if(M.hasBase)return 'baseline';
+  if(CMP)return 'compare';
+  return 'atual';
+}
+function analyze(){
+  const src=baseSource(),cut=eod(S.cutoff);
+  const w={dur:t=>t.ms?0:t.dur,work:t=>t.work,cost:t=>t.cost,eq:t=>t.ms?0:1};
+  let wf=w[S.weight];
+  if(M.leaves.reduce((s,t)=>s+wf(t),0)<=0)wf=w.eq;
+  for(const t of M.T){t.W=0;t.WR=0;t.WP=0;t.n=0;t.nLate=0;t.nCrit=0;t.nDone=0;t.min=null;t.max=null;}
+  const cmpMap=CMP?CMP.byUid:null;
+  const cumTP=(l,d)=>{let v=0;for(const x of l)v+=x.h*frac(x.s,x.f,d);return v;};
+  for(const t of M.leaves){
+    let bs=t.start,bf=t.finish,has=false;
+    if(src==='baseline'&&t.bs){bs=t.bs;bf=t.bf;has=true;}
+    else if(src==='compare'&&cmpMap&&cmpMap.has(t.uid)){const c=cmpMap.get(t.uid);bs=c.start;bf=c.finish;has=true;}
+    t.ps=bs;t.pf=bf;t.hasBase=has;
+    t.varF=has?dd(t.finish,bf):null;
+    t.varS=has?dd(t.start,bs):null;
+    t.wt=wf(t);
+    t.useTpB=src==='baseline'&&has&&t.tpB.length>0&&t.bw>0;
+    t.plan=t.useTpB?Math.min(1,cumTP(t.tpB,cut)/t.bw):frac(bs,bf,cut);
+    t.rf=S.real==='work'&&t.work>0?Math.min(1,t.aw/t.work):t.pct/100;
+    t.done=t.pct>=100;
+    t.stat=t.done?'Concluída':t.pct>0?'Em andamento':'Não iniciada';
+    t.lateF=!t.done&&t.finish&&sod(t.finish)<sod(S.cutoff);
+    t.lateS=!t.done&&t.pct===0&&t.start&&sod(t.start)<sod(S.cutoff);
+    t.delay=t.lateF?dd(S.cutoff,t.finish):0;
+    for(const a of t.path){
+      a.W+=t.wt;a.WR+=t.wt*t.rf;a.WP+=t.wt*t.plan;a.n++;
+      if(t.lateF)a.nLate++;if(t.crit&&!t.done)a.nCrit++;if(t.done)a.nDone++;
+      if(!a.min||t.start<a.min)a.min=t.start;if(!a.max||t.finish>a.max)a.max=t.finish;
+    }
+  }
+  for(const t of M.T){
+    if(t.leaf){t.real=t.rf*100;t.prev=t.plan*100;}
+    else if(t.W>0){t.real=t.WR/t.W*100;t.prev=t.WP/t.W*100;}
+    else{t.real=t.pct;t.prev=null;}
+  }
+  const root=M.T.find(t=>t.lvl===0&&t.sum)||{W:0,WR:0,WP:0};
+  const W=M.leaves.reduce((s,t)=>s+t.wt,0)||1,WR=M.leaves.reduce((s,t)=>s+t.wt*t.rf,0),WP=M.leaves.reduce((s,t)=>s+t.wt*t.plan,0);
+  A={src,cut,W,real:WR/W*100,prev:WP/W*100,spi:WP>0?WR/WP:null};
+  const node=M.scope!=null?M.byUid.get(M.scope):null;
+  const SL=node?M.leaves.filter(t=>t.path.includes(node)):M.leaves;
+  const rawW=SL.reduce((s,t)=>s+t.wt,0),fb=rawW<=0;
+  for(const t of SL)t.wtc=fb?(t.ms?0:1):t.wt;
+  const Wc=SL.reduce((s,t)=>s+t.wtc,0)||1,WRc=SL.reduce((s,t)=>s+t.wtc*t.rf,0),WPc=SL.reduce((s,t)=>s+t.wtc*t.plan,0);
+  A.sc={fb,node,n:SL.length,W:Wc,real:WRc/Wc*100,prev:WPc/Wc*100,spi:WPc>0?WRc/WPc:null};
+  // curva S
+  let d0=null,d1=null;
+  for(const t of SL){for(const d of [t.start,t.finish,t.ps,t.pf,t.as,t.af]){if(!d)continue;if(!d0||d<d0)d0=d;if(!d1||d>d1)d1=d;}}
+  d0=sod(d0);d1=sod(d1);
+  const days=[];for(let d=new Date(d0);d<=d1;d=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1))days.push(d);
+  const plan=new Array(days.length).fill(0),act=new Array(days.length).fill(null),fc=new Array(days.length).fill(null);
+  const ci=days.findIndex(d=>sod(d).getTime()===sod(S.cutoff).getTime());
+  const cutIdx=ci<0?(sod(S.cutoff)<days[0]?-1:days.length-1):ci;
+  const ends=days.map(eod);
+  for(const t of SL){
+    if(t.wtc<=0)continue;
+    const a0=t.as||t.start,a1=t.af||cut;
+    for(let i=0;i<days.length;i++){
+      plan[i]+=t.wtc*(t.useTpB?Math.min(1,cumTP(t.tpB,ends[i])/t.bw):frac(t.ps,t.pf,ends[i]));
+    }
+    for(let i=0;i<=cutIdx;i++){
+      let v=0;
+      if(S.real==='work'&&t.tpA.length&&t.work>0)v=t.wtc*Math.min(1,cumTP(t.tpA,ends[i])/t.work);
+      else if(t.rf>0&&a0<=cut)v=t.wtc*t.rf*frac(a0,a1<=a0?new Date(+a0+1):a1,ends[i]);
+      act[i]=(act[i]||0)+v;
+    }
+    const rem=t.wtc*(1-t.rf);
+    const f0=t.start>cut?t.start:cut,f1=t.finish>f0?t.finish:new Date(+f0+DAY);
+    for(let i=Math.max(cutIdx,0);i<days.length;i++){
+      fc[i]=(fc[i]||0)+(t.wtc*t.rf)+(rem>0?rem*frac(f0,f1,ends[i]):0);
+    }
+  }
+  A.curve={days,plan:plan.map(v=>v/Wc*100),act:act.map(v=>v==null?null:v/Wc*100),fc:fc.map(v=>v==null?null:v/Wc*100),cutIdx};
+  // forecast: ajuste final em cutIdx para coincidir com realizado
+  if(cutIdx>=0&&A.curve.act[cutIdx]!=null)A.curve.fc[cutIdx]=A.curve.act[cutIdx];
+}
+
+/* ============ componentes de UI ============ */
+const TABLES={};
+function cellHtml(c,r){
+  if(c.f)return c.f(r);
+  const v=c.v(r);
+  if(c.t==='d')return v?fd(v):'';
+  if(c.t==='n')return nf(v,c.dp==null?1:c.dp);
+  return esc(v);
+}
+function cellCsv(c,r){
+  const v=c.e?c.e(r):c.v(r);
+  if(c.t==='d')return v?fd(v):'';
+  if(c.t==='n')return v==null?'':nf(v,c.dp==null?1:c.dp);
+  return v==null?'':String(v);
+}
+function tbl(id,cols,rows,opt={}){
+  TABLES[id]={cols,rows,opt};
+  return `<div class="tools">${opt.nosearch?'':`<input type="search" placeholder="Filtrar…" data-filter="${id}" value="${esc(S.filter[id]||'')}" style="min-width:200px">`}
+    <span class="mute" id="cnt-${id}"></span><span class="spacer"></span>
+    <button data-csv="${id}">Exportar CSV</button></div><div class="tw" id="tb-${id}"></div>`;
+}
+function drawTable(id){
+  const T=TABLES[id];if(!T||T.raw)return;
+  const el=$('#tb-'+id);if(!el)return;
+  let rows=T.rows;
+  const q=(S.filter[id]||'').toLowerCase();
+  if(q)rows=rows.filter(r=>T.cols.some(c=>String(cellCsv(c,r)).toLowerCase().includes(q)));
+  const so=S.sort[id];
+  if(so){const c=T.cols[so.i];const dir=so.dir;
+    rows=[...rows].sort((a,b)=>{let x=c.v(a),y=c.v(b);if(x instanceof Date)x=+x;if(y instanceof Date)y=+y;
+      if(x==null)return 1;if(y==null)return -1;return (typeof x==='number'&&typeof y==='number'?x-y:String(x).localeCompare(String(y),'pt-BR',{numeric:true}))*dir;});}
+  const LIM=T.opt.limit||700;
+  T.shown=rows;
+  const show=rows.slice(0,LIM);
+  el.innerHTML=`<table><thead><tr>${T.cols.map((c,i)=>`<th class="${c.t==='n'||c.t==='d'||c.num?'n':''}" data-sort="${id}|${i}">${esc(c.h)}${so&&so.i===i?(so.dir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead>
+  <tbody>${show.map(r=>`<tr class="${r.sum&&T.opt.sumRows?'sum':''}">${T.cols.map(c=>`<td class="${c.t==='n'||c.t==='d'||c.num?'n':''} ${c.wrap?'wrap':''}">${cellHtml(c,r)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  const cnt=$('#cnt-'+id);if(cnt)cnt.textContent=rows.length+' linha(s)'+(rows.length>LIM?` (exibindo ${LIM}; use o filtro ou exporte o CSV)`:'');
+}
+function exportCsv(id){
+  const T=TABLES[id];if(!T)return;
+  const rows=T.shown||T.rows;
+  const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
+  const lines=[T.cols.map(c=>q(c.h)).join(';'),...rows.map(r=>T.cols.map(c=>q(cellCsv(c,r))).join(';'))];
+  const blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=id+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+const tagStat=t=>t.lateF?'<span class="tag t-late">Atrasada</span>':t.done?'<span class="tag t-done">Concluída</span>':t.pct>0?'<span class="tag t-prog">Em andamento</span>':'<span class="tag t-todo">Não iniciada</span>';
+const nameCell=t=>`<span style="padding-left:${Math.max(0,t.lvl-1)*0}px">${esc(t.name)}</span>`;
+const dev=v=>v==null?'':`<span class="${v<-2?'bad':v>=0?'ok':'warn'}">${v>0?'+':''}${nf(v,1)}</span>`;
+const kpi=(l,v,s,cls)=>`<div class="card kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div><div class="s">${s||''}</div></div>`;
+const bar=(real,prev)=>`<div class="bar" title="Real ${nf(real)}% | Previsto ${prev==null?'-':nf(prev)+'%'}"><i style="width:${Math.min(100,real||0)}%"></i>${prev!=null?`<b style="left:${Math.min(100,prev)}%"></b>`:''}</div>`;
+const baseLabel=()=>({baseline:'linha de base do arquivo',compare:'versão anterior carregada',atual:'datas atuais do cronograma'}[A.src]);
+
+const baseCols=()=>A.src==='atual'?[]:[
+  {h:'Término base',t:'d',v:t=>t.pf},{h:'Δ término (d)',t:'n',dp:0,v:t=>t.varF,f:t=>t.varF==null?'':`<span class="${t.varF>0?'bad':t.varF<0?'ok':''}">${t.varF>0?'+':''}${t.varF}</span>`}];
+
+/* ============ abas ============ */
+/* ============ multi-cronograma ============ */
+const DISC=['Civil','Mecânica','Elétrica','Eletromecânica','Outra'];
+const guessDisc=t=>/eletromec/i.test(t)||/stahl/i.test(t)?'Eletromecânica':/civil/i.test(t)?'Civil':/mec[aâ]n/i.test(t)?'Mecânica':/el[eé]tr/i.test(t)?'Elétrica':'Outra';
+const isEM=d=>d==='Mecânica'||d==='Elétrica'||d==='Eletromecânica';
+function addModel(m){let k=m.title,n=1;while(S.models.some(x=>x.key===k))k=m.title+' ('+(++n)+')';
+  m.key=k;m.name=m.title;m.disc=guessDisc(m.file+' '+m.title);m.wman=null;m.scope=null;m.cmp=null;S.models.push(m);}
+function analyzeAll(){
+  const kM=M,kC=CMP;
+  for(const m of S.models){M=m;CMP=m.cmp||null;const sc=m.scope;m.scope=null;analyze();m.Afull=A;if(sc!=null){m.scope=sc;analyze();}m.A=A;}
+  M=kM;CMP=kC;A=M.A;
+}
+function setActive(i){M=S.models[i];CMP=M.cmp||null;S.initCollapse=true;S.chk=null;S.sort={};loadCards();A=M.A;render();}
+function removeModel(i){
+  const was=S.models.indexOf(M);S.models.splice(i,1);
+  if(!S.models.length){M=null;CMP=null;render();return;}
+  if(was===i||was>i)setActive(Math.max(0,Math.min(was===i?0:was-1,S.models.length-1)));else render();
+  saveOp();
+}
+function opKeys(k){
+  if(k==='all')return S.models;
+  if(k==='em')return S.models.filter(m=>isEM(m.disc));
+  if(k.startsWith('disc:'))return S.models.filter(m=>m.disc===k.slice(5));
+  if(k.startsWith('m:'))return S.models.filter(m=>m.key===k.slice(2));
+  return [];
+}
+function aggr(ms){
+  if(!ms.length)return null;
+  const manual=ms.every(m=>m.wman>0);
+  const w=ms.map(m=>manual?m.wman:m.Afull.W);
+  const sw=w.reduce((a,b)=>a+b,0)||1;
+  let real=0,prev=0,max=null;
+  ms.forEach((m,i)=>{real+=w[i]*m.Afull.real;prev+=w[i]*m.Afull.prev;if(!max||m.lastFinish>max)max=m.lastFinish;});
+  return {real:real/sw,prev:prev/sw,max,w,sw};
+}
+function opNode(k){ // 'n:<key>::<uid>'
+  const [mk,u]=k.slice(2).split('::');const m=S.models.find(x=>x.key===mk);const t=m&&m.byUid.get(+u);return t?{m,t}:null;
+}
+function autoTitle(k){
+  if(k.startsWith('n:')){const n=opNode(k);if(!n)return '';const t=n.t;return t.lvl===0?n.m.name:t.wbs+' '+t.name;}
+  const ms=opKeys(k);
+  return k==='all'?'Projeto':k==='em'?'Obra Eletromecânica':k.startsWith('disc:')?'Obra '+k.slice(5):(ms[0]?ms[0].name:'');
+}
+function keyLabel(k){
+  if(k.startsWith('n:')){const n=opNode(k);return n?n.m.name+' › '+n.t.wbs+' '+n.t.name:k;}
+  return k==='all'?'Projeto (consolidado)':k==='em'?'Eletromecânica (mecânica + elétrica)':k.startsWith('disc:')?'Disciplina: '+k.slice(5):'Cronograma: '+autoTitle(k);
+}
+function opScope(k){
+  if(k.startsWith('n:')){const n=opNode(k);if(!n)return null;const t=n.t;return {real:t.real,prev:t.prev==null?t.real:t.prev,w:t.W>0?t.W:1,max:t.max};}
+  const g=aggr(opKeys(k));return g?{real:g.real,prev:g.prev,w:g.sw,max:g.max}:null;
+}
+function opCardData(c,i){
+  if(c.man){const m=c.man,n=v=>v===''||v==null||isNaN(+v)?null:+v;const real=n(m.real),prev=n(m.prev);let ad=n(m.ad);if(ad==null)ad=prev>0&&real!=null?real/prev*100:100;
+    let max=null;if(m.date){const q=m.date.split('-').map(Number);if(q.length===3)max=new Date(q[0],q[1]-1,q[2]);}
+    return {title:c.t||'CARD MANUAL',tip:'Card manual',real:real||0,prev,ad,max,label:m.label||'Término',rm:i,rmAttr:'data-oprm'};}
+  const ds=c.k.map(opScope).filter(Boolean);if(!ds.length)return null;
+  const sw=ds.reduce((a,d)=>a+d.w,0)||1;
+  let real=0,prev=0,max=null;for(const d of ds){real+=d.w*d.real;prev+=d.w*d.prev;if(!max||d.max>max)max=d.max;}
+  const names=c.k.map(autoTitle);
+  if(c.dt){const q=c.dt.split('-').map(Number);if(q.length===3)max=new Date(q[0],q[1]-1,q[2]);}
+  return {title:c.t||(c.k.length===1?names[0]:names.join(' + ')),tip:c.k.map(keyLabel).join(' + '),real:real/sw,prev:prev/sw,max,label:c.lb||undefined,rm:i,rmAttr:'data-oprm'};
+}
+function opOptHtml(){
+  let h='<option value="">+ incluir WBS / escopo…</option><optgroup label="Consolidado"><option value="all">Projeto (consolidado)</option>';
+  for(const d of [...new Set(S.models.map(m=>m.disc))])h+=`<option value="disc:${esc(d)}">Disciplina: ${esc(d)}</option>`;
+  if(S.models.some(m=>m.disc==='Mecânica'||m.disc==='Elétrica'))h+='<option value="em">Eletromecânica (mecânica + elétrica)</option>';
+  h+='</optgroup>';
+  for(const m of S.models){h+=`<optgroup label="${esc(m.name)}"><option value="m:${esc(m.key)}">Cronograma inteiro</option>`;
+    for(const t of m.T.filter(t=>t.sum&&t.lvl>=1))h+=`<option value="n:${esc(m.key)}::${t.uid}">${'\u00a0\u00a0'.repeat(Math.max(0,t.lvl-1))}${esc(t.wbs)} – ${esc(t.name)}</option>`;
+    h+='</optgroup>';}
+  return h;
+}
+function nodeCurve(m,uid){
+  const kM=M,kC=CMP,ks=m.scope;M=m;CMP=m.cmp||null;m.scope=uid;analyze();const c=A.curve;m.scope=ks;M=kM;CMP=kC;A=M.A;return c;
+}
+function opOptions(){
+  const o=[['all','Projeto (consolidado)']];
+  for(const d of [...new Set(S.models.map(m=>m.disc))])o.push(['disc:'+d,'Disciplina: '+d]);
+  if(S.models.some(m=>m.disc==='Mecânica'||m.disc==='Elétrica'))o.push(['em','Eletromecânica (mecânica + elétrica)']);
+  for(const m of S.models)o.push(['m:'+m.key,'Cronograma: '+m.name]);
+  for(const m of S.models)for(const t of m.T.filter(t=>t.sum&&t.lvl>=1))o.push(['n:'+m.key+'::'+t.uid,m.name+' › '+t.wbs+' '+t.name]);
+  return o;
+}
+function defaultOpCards(){
+  const k=['all'];
+  if(S.models.some(m=>m.disc==='Civil'))k.push('disc:Civil');
+  if(S.models.some(m=>isEM(m.disc)))k.push('em');
+  for(const m of S.models){if(k.length>=4)break;if(m.disc==='Outra'||!k.includes('disc:'+m.disc))k.push('m:'+m.key);}
+  return k.slice(0,4);
+}
+function aggCurve(ms){
+  const g=aggr(ms),cs=ms.map(m=>m.Afull.curve);
+  const d0=new Date(Math.min(...cs.map(c=>+c.days[0]))),d1=new Date(Math.max(...cs.map(c=>+c.days[c.days.length-1])));
+  const days=[];for(let d=new Date(d0);d<=d1;d=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1))days.push(d);
+  const cut=sod(S.cutoff);let ci=days.findIndex(d=>+sod(d)===+cut);if(ci<0)ci=cut<days[0]?-1:days.length-1;
+  const last=cs.map(c=>{let v=0;for(const x of c.act)if(x!=null)v=x;return v;});
+  const plan=[],act=[],fc=[];
+  days.forEach((d,i)=>{let p=0,a=0,f=0;
+    cs.forEach((c,j)=>{const off=Math.round((sod(d)-sod(c.days[0]))/DAY),k=Math.min(off,c.days.length-1);
+      if(off>=0){p+=g.w[j]*c.plan[k];a+=g.w[j]*(c.act[k]==null?last[j]:c.act[k]);f+=g.w[j]*(c.fc[k]==null?(c.act[k]==null?last[j]:c.act[k]):c.fc[k]);}});
+    plan.push(p/g.sw);act.push(i<=ci?a/g.sw:null);fc.push(ci>=0&&i>=ci?f/g.sw:null);});
+  return {days,plan,act,fc,cutIdx:ci};
+}
+/* ----- persistência (onepage) ----- */
+function saveOp(){try{
+  const meta={};for(const m of S.models)meta[m.key]={name:m.name,disc:m.disc,wman:m.wman};
+  localStorage.setItem('ac:op',JSON.stringify({v:2,fs:S.op.fs,week:S.week||'',pages:S.pages,meta,thr:S.thr}));}catch(e){}}
+function loadOp(){let b=null;try{b=JSON.parse(localStorage.getItem('ac:op'));}catch(e){}
+  S.pages=null;S._legacyCards=null;S._legacyCurve=null;S.week='';
+  if(b){
+    S.week=b.week||(b.pages&&b.pages[1]&&b.pages[1].week)||(b.op&&b.op.week)||'';
+    if(b.fs)S.op.fs=b.fs;
+    if(b.pages&&b.pages.length)S.pages=b.pages;
+    else{Object.assign(S.op,b.op||{});S._legacyCards=b.cards||null;S._legacyCurve=b.curve||null;}
+    if(b.thr)S.thr=b.thr;S._meta=b.meta||{};}
+  else S._meta={};
+}
+function applyMeta(ms){for(const m of ms){const x=S._meta&&S._meta[m.key];if(x){m.name=x.name||m.name;m.disc=x.disc||m.disc;m.wman=x.wman||null;}}}
+const PGDEF=[['capa','Capa','cover'],['geral','Visão geral','geral'],['civil','Civil','disc','Civil'],['mec','Mecânica','disc','Mecânica'],['ele','Elétrica','disc','Elétrica']];
+function CP(){return (S.pages&&S.pages.find(p=>p.id===S.pgId))||(S.pages&&S.pages[1]);}
+function weekText(){const d=sod(S.cutoff),dow=(d.getDay()+6)%7,mon=new Date(d.getFullYear(),d.getMonth(),d.getDate()-dow),fri=new Date(mon.getFullYear(),mon.getMonth(),mon.getDate()+4);return 'Semana: '+fd(mon)+' a '+fd(fri);}
+function discDefaultCards(P){
+  const k=[{t:'',k:['disc:'+P.disc]}];
+  const m=S.models.find(x=>x.disc===P.disc);
+  if(m)for(const t of m.T.filter(t=>t.sum&&t.lvl===2).slice(0,6))k.push({t:'',k:['n:'+m.key+'::'+t.uid]});
+  return k;
+}
+function normPages(){
+  const pj=S.models[0]?S.models[0].title:'';
+  if(!S.pages){
+    S.pages=PGDEF.map(d=>({id:d[0],name:d[1],type:d[2],disc:d[3]||null,title:'',week:'',obs:null,cards:null,curve:null,nPhotos:d[2]==='geral'?5:1,auto:true}));
+    const g=S.pages[1],O=S.op;
+    if(O.title)g.title=O.title;if(O.week)g.week=O.week;if(O.obs)g.obs=O.obs;if(O.nPhotos)g.nPhotos=O.nPhotos;
+    if(S._legacyCards){g.cards=S._legacyCards;g.auto=false;}
+    if(S._legacyCurve)g.curve=S._legacyCurve;
+  }
+  const ok=k=>k.startsWith('n:')?!!opNode(k):opKeys(k).length>0;
+  for(const P of S.pages){
+    if(!P.title)P.title=P.type==='cover'?pj:pj+' - VISÃO '+(P.type==='geral'?'GERAL':P.name.toUpperCase());
+    if(P.type==='cover')continue;
+    if(P.obs==null)P.obs=P.type==='geral'?'Pontos críticos:\n\nAtividades concluídas:\n\nEm andamento:\n\nPróximos passos:\n':'Atividades concluídas:\n\nAtividades em andamento:\n\nPróximas atividades:\n\nPontos de atenção:\n';
+    const dc=P.type==='geral'?'all':'disc:'+P.disc;
+    if(P.curve==null||(P.curve.startsWith('n:')&&!opNode(P.curve)))P.curve=dc;
+    if(P.auto!==false||!P.cards)P.cards=P.type==='geral'?defaultOpCards().map(k=>({t:'',k:[k]})):discDefaultCards(P);
+    P.cards=P.cards.map(c=>typeof c==='string'?{t:'',k:[c]}:c.man?{t:c.t||'',k:[],man:c.man}:{t:c.t||'',k:(c.k||[]).filter(ok),dt:c.dt||'',lb:c.lb||''});
+  }
+  if(!S.pgId||!S.pages.some(p=>p.id===S.pgId))S.pgId='geral';
+}
+const weekStr=()=>S.week||weekText();
+async function exportReport(){
+  const photos={};
+  for(const P of S.pages){const n=P.type==='cover'?1:9;for(let i=0;i<n;i++){const k=phKey(P.id,i),u=await idbGet(k);if(u)photos[k]=u;}}
+  const meta={};for(const m of S.models)meta[m.key]={name:m.name,disc:m.disc,wman:m.wman};
+  const blob=new Blob([JSON.stringify({app:'analisador-cronograma',v:2,fs:S.op.fs,week:S.week||'',pages:S.pages,meta,thr:S.thr,photos})],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='onepage-'+isoDay(new Date())+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+}
+async function importReport(f){
+  try{
+    const b=JSON.parse(await f.text());
+    if(b.app!=='analisador-cronograma'||!b.pages)throw new Error('Este arquivo não é um backup do Onepage.');
+    S.pages=b.pages;S.week=b.week||'';if(b.fs)S.op.fs=b.fs;if(b.thr)S.thr=b.thr;S._meta=b.meta||{};
+    applyMeta(S.models);
+    for(const [k,u] of Object.entries(b.photos||{}))await idbSet(k,u);
+    saveOp();analyzeAll();render();
+  }catch(e){alert(e.message||'Não consegui abrir o backup.');}
+}
+function cardsEdited(){CP().auto=false;saveOp();render();}
+/* ----- fotos (IndexedDB com reserva em memória) ----- */
+const MEM={};let _db=null;
+const idb=()=>_db||(_db=new Promise((res,rej)=>{try{const r=indexedDB.open('ac-photos',1);r.onupgradeneeded=()=>r.result.createObjectStore('p');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}catch(e){rej(e);}}));
+const idbGet=k=>MEM[k]?Promise.resolve(MEM[k]):idb().then(db=>new Promise((res,rej)=>{const q=db.transaction('p').objectStore('p').get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);})).catch(()=>null);
+const idbSet=(k,v)=>{MEM[k]=v;return idb().then(db=>new Promise((res,rej)=>{const tx=db.transaction('p','readwrite');tx.objectStore('p').put(v,k);tx.oncomplete=res;tx.onerror=()=>rej(tx.error);})).catch(()=>{});};
+const idbDel=k=>{delete MEM[k];return idb().then(db=>new Promise(res=>{const tx=db.transaction('p','readwrite');tx.objectStore('p').delete(k);tx.oncomplete=res;tx.onerror=res;})).catch(()=>{});};
+const phKey=(pg,i)=>pg==='geral'?'ph'+i:'ph:'+pg+':'+i;
+async function shrink(f){const bm=await createImageBitmap(f);const k=Math.min(1,1600/Math.max(bm.width,bm.height));
+  const c=document.createElement('canvas');c.width=Math.round(bm.width*k);c.height=Math.round(bm.height*k);c.getContext('2d').drawImage(bm,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.85);}
+function showPhoto(pg,i,url){const el=document.querySelector(`.ph[data-pg="${pg}"][data-slot="${i}"]`);if(!el)return;const img=el.querySelector('img');img.src=url||'';img.style.display=url?'block':'none';el.classList.toggle('has',!!url);}
+async function setPhoto(pg,i,file){if(!file||!/^image\//.test(file.type)){alert('Escolha um arquivo de imagem.');return;}
+  try{const url=await shrink(file);await idbSet(phKey(pg,i),url);showPhoto(pg,i,url);}catch(e){alert('Não consegui ler a imagem.');}}
+async function fillPhotos(){for(const P of S.pages){const n=P.type==='cover'?1:P.nPhotos;for(let i=0;i<n;i++){const u=await idbGet(phKey(P.id,i));showPhoto(P.id,i,u);}}}
+function fitStage(){const w=document.querySelector('.pgw.cur .opw'),st=w&&w.querySelector('.stage');if(!w||!st)return;const k=Math.min(1.6,w.clientWidth/1600);st.style.transform=`scale(${k})`;w.style.height=(900*k)+'px';}
+window.addEventListener('resize',fitStage);
+
+function pageStage(P){
+  const O=S.op;
+  const hdr=(left)=>`<div class="sh">${left}<div class="stt"><input data-pf="${P.id}:title" value="${esc(P.title)}"></div><span style="width:380px"></span></div>`;
+  const wk=`<span class="sweek wkv">${esc(weekStr())}</span>`;
+  const slot=(i,st)=>`<div class="ph" data-pg="${P.id}" data-slot="${i}" style="${st||''}"><img style="display:none" alt=""><div class="phh">Clique ou arraste uma foto aqui</div><button class="prm noprint" data-phrm="${P.id}:${i}">Remover</button></div>`;
+  if(P.type==='cover')
+    return `<div class="stage cov">${hdr('<span style="width:380px"></span>')}
+      <div class="ph covph" data-pg="${P.id}" data-slot="0"><img style="display:none" alt=""><div class="phh">Clique ou arraste a foto de capa aqui</div><button class="prm noprint" data-phrm="${P.id}:0">Remover</button></div>
+      <div class="sh sf"><div class="stt"><span class="wkv">${esc(weekStr())}</span></div></div></div>`;
+  const cards=P.cards.map((c,i)=>opCardData(c,i)).filter(Boolean);
+  let C=null,cvTitle='';
+  if(P.curve.startsWith('n:')){const n=opNode(P.curve);C=nodeCurve(n.m,n.t.uid);cvTitle=(n.t.wbs+' '+n.t.name).toUpperCase();}
+  else{const ck=opKeys(P.curve);if(ck.length){C=aggCurve(ck);
+    cvTitle=P.curve==='all'?'GERAL - OBRA':P.curve==='em'?'ELETROMECÂNICA':P.curve.startsWith('disc:')?P.curve.slice(5).toUpperCase():ck[0].name.toUpperCase();}}
+  const cvBox=(w,h)=>C?`<div class="cvb">${chartSvg(C,'opsvg-'+P.id,w,h)}<div class="lg2"><span style="--c:var(--plan)">BASELINE</span><span style="--c:var(--fc)">TENDÊNCIA</span><span style="--c:var(--real)">REAL</span></div></div>`:`<div class="cvb" style="align-items:center;justify-content:center;color:#8a94a6;text-align:center;padding:10px">Nenhum cronograma desta disciplina carregado</div>`;
+  const np=P.nPhotos;
+  if(P.type==='geral'){
+    const n=cards.length,cols=n<=4?2:3,rows=Math.max(1,Math.ceil(n/cols));
+    const R=np===1?1:np===2?2:2+Math.ceil((np-1)/2);
+    const slots=Array.from({length:np},(_,i)=>slot(i,np===1||np===2?'grid-column:1/-1':i===0?'grid-column:1/-1;grid-row:span 2':'')).join('');
+    return `<div class="stage">${hdr(wk)}
+    <div class="sbody"><div class="sl">
+      <div class="sg" style="grid-template-columns:repeat(${cols},minmax(0,1fr));grid-template-rows:repeat(${rows},minmax(0,1fr))">${cards.map(gauge).join('')}</div>
+      <div class="sb"><div class="box"><div class="bh">Observações do projeto:</div><textarea data-pf="${P.id}:obs" style="font-size:${O.fs}px">${esc(P.obs)}</textarea></div>
+        <div class="box"><div class="bh" style="text-align:center">Curva S ${esc(cvTitle)}</div>${cvBox(560,500)}</div></div>
+    </div><div class="sr" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:repeat(${R},minmax(0,1fr))"><div style="display:none"></div>${slots}</div></div></div>`;
+  }
+  const pos=[[1,1],[2,1],[3,1],[4,1],[2,2],[3,2],[4,2]];
+  const cells=cards.slice(0,7).map((c,i)=>`<div class="cell" style="grid-column:${pos[i][0]};grid-row:${pos[i][1]}">${gauge(c)}</div>`).join('');
+  const pc=Math.min(np,4),pcols=np>1?2:1;
+  return `<div class="stage">${hdr(wk)}
+    <div class="dgrid">${cells}
+      <div class="box" style="grid-column:1;grid-row:2/4"><div class="bh">Comentários</div><textarea data-pf="${P.id}:obs" style="font-size:${O.fs}px">${esc(P.obs)}</textarea></div>
+      <div class="box" style="grid-column:2/4;grid-row:3"><div class="bh" style="text-align:center">Registros Fotográficos</div><div class="dpics" style="grid-template-columns:repeat(${pcols},minmax(0,1fr))">${Array.from({length:np},(_,i)=>slot(i)).join('')}</div></div>
+      <div class="box" style="grid-column:4;grid-row:3"><div class="bh" style="text-align:center">Curva S - ${esc(cvTitle||P.name.toUpperCase())}</div>${cvBox(400,420)}</div>
+    </div></div>`;
+}
+function viewOnepage(){
+  normPages();
+  const P=CP(),O=S.op,opts=opOptions();
+  const pgtabs=`<div class="pgtabs noprint">${S.pages.map(p=>`<button data-pgsel="${p.id}" class="${p.id===P.id?'on':''}">${esc(p.name)}</button>`).join('')}</div>`;
+  const tbl=`<div class="note">Carregue um XML por cronograma (civil, mecânica, elétrica…). O consolidado pondera cada cronograma pelo seu peso total (conforme "Peso" no topo) ou pelo peso manual que você informar abaixo. Textos, cards e fotos ficam salvos neste navegador. As páginas são: capa, visão geral e uma por disciplina; "Imprimir" gera todas em sequência.</div>
+  <div class="tw" style="max-height:none;margin-bottom:10px"><table class="mgr"><thead><tr><th>Ativo</th><th>Arquivo</th><th>Nome no relatório</th><th>Disciplina</th><th>Peso manual (%)</th><th>% real</th><th>% previsto</th><th></th></tr></thead><tbody>
+  ${S.models.map((m,i)=>`<tr><td><button data-mact="${i}" ${m===M?'class="pri"':''}>${m===M?'●':'ver'}</button></td><td>${esc(m.file)}</td><td><input data-mname="${i}" value="${esc(m.name)}" style="width:210px"></td>
+    <td><select data-mdisc="${i}">${DISC.map(d=>`<option ${d===m.disc?'selected':''}>${d}</option>`).join('')}</select></td>
+    <td><input type="number" data-mw="${i}" value="${m.wman||''}" placeholder="auto" min="0" style="width:80px"></td><td class="n">${nf(m.Afull.real)}</td><td class="n">${nf(m.Afull.prev)}</td>
+    <td><button data-mrm="${i}" title="Remover cronograma">×</button></td></tr>`).join('')}</tbody></table></div>`;
+  let ed='';
+  if(P.type==='cover'){
+    ed=`<div class="note">Capa: clique na imagem para escolher a foto (ou arraste o arquivo). Título e semana são editados direto nas faixas azuis.</div>`;
+  }else{
+    ed=`<div class="note" style="margin-bottom:6px">Cada card pode considerar um ou vários escopos: o projeto, uma disciplina, um cronograma ou qualquer WBS. Com mais de um escopo, o card consolida pelos pesos de cada um.${P.type==='disc'?' Esta página mostra até 7 cards.':''}${P.auto!==false?' (Cards no padrão automático: mudam sozinhos conforme os cronogramas carregados, até você editar.)':''}</div>
+  <div class="cedit">${P.cards.map((c,i)=>c.man?`<div class="ce"><b>${i+1}</b><input data-ctitle="${i}" value="${esc(c.t)}" placeholder="título do card manual" style="width:190px"><span class="chip">MANUAL</span>
+    <label class="ctl">% real <input type="number" data-mf="${i}:real" value="${esc(c.man.real??'')}" style="width:64px"></label>
+    <label class="ctl">% previsto <input type="number" data-mf="${i}:prev" value="${esc(c.man.prev??'')}" style="width:64px"></label>
+    <label class="ctl">Aderência % <input type="number" data-mf="${i}:ad" value="${esc(c.man.ad??'')}" placeholder="auto" style="width:64px"></label>
+    <label class="ctl">Rótulo <input data-mf="${i}:label" value="${esc(c.man.label||'')}" placeholder="Término" style="width:80px"></label>
+    <label class="ctl">Data <input type="date" data-mf="${i}:date" value="${esc(c.man.date||'')}"></label>
+    <button data-cup="${i}" title="Subir">↑</button><button data-cdn="${i}" title="Descer">↓</button><button data-oprm="${i}">Remover card</button></div>`:`<div class="ce"><b>${i+1}</b><input data-ctitle="${i}" value="${esc(c.t)}" placeholder="título (automático)" style="width:190px">
+    ${c.k.map((k,j)=>`<span class="chip">${esc(keyLabel(k))}<button data-cki="${i}:${j}" title="Tirar">×</button></span>`).join('')}
+    <label class="ctl">Data <input type="date" data-cdt="${i}" value="${esc(c.dt||'')}" title="Vazio = data de término calculada"></label>
+    <select data-cadd="${i}" style="max-width:260px">${opOptHtml()}</select>
+    <button data-cup="${i}" title="Subir">↑</button><button data-cdn="${i}" title="Descer">↓</button><button data-oprm="${i}">Remover card</button></div>`).join('')}</div>`;
+  }
+  const tools=`<div class="tools"><button id="btnAdd" class="pri">+ Adicionar cronograma(s)</button>
+    ${P.type==='cover'?'':`<button id="opNew">+ Novo card</button><button id="opMan" title="Card em que você digita % real, % previsto e a aderência">+ Card manual</button>
+    <label class="ctl">Curva S <select id="opCurve" style="max-width:300px">${opts.map(o=>`<option value="${esc(o[0])}" ${o[0]===P.curve?'selected':''}>${esc(o[1])}</option>`).join('')}</select></label>
+    <label class="ctl">Fotos <button id="phMinus">−</button><b>${P.nPhotos}</b><button id="phPlus">+</button></label>`}
+    ${P.type==='disc'?`<label class="ctl">Disciplina da página <select id="pdisc">${DISC.map(d=>`<option ${d===P.disc?'selected':''}>${d}</option>`).join('')}</select></label><button id="pdef" title="Volta aos cards automáticos">Cards padrão</button>`:''}
+    <label class="ctl">Semana (todas as páginas) <input id="weekIn" value="${esc(weekStr())}" style="width:250px"></label><button id="weekAuto" title="Volta a calcular pela data de corte">Automática</button>
+    <label class="ctl">Fonte dos textos <select id="opFs">${[11,12,13,14,15,16].map(v=>`<option ${v===O.fs?'selected':''}>${v}</option>`).join('')}</select></label>
+    <label class="ctl"><span class="sw" style="background:${TH_COL.ok}"></span>≥ <input type="number" id="thrOk" value="${S.thr.ok}" style="width:56px">%</label>
+    <label class="ctl"><span class="sw" style="background:${TH_COL.warn}"></span>≥ <input type="number" id="thrWarn" value="${S.thr.warn}" style="width:56px">%</label>
+    <span class="spacer"></span><button id="bkSave" title="Baixa um arquivo .json com textos, cards, semana e fotos">Salvar backup</button><button id="bkOpen">Abrir backup</button><button id="btnPrint" class="pri">Imprimir / salvar em PDF</button></div>`;
+  return `<div class="noprint">${tbl}${pgtabs}${ed}${tools}</div>
+  <div id="opall">${S.pages.map(p=>`<div class="pgw ${p.id===P.id?'cur':''}" data-pgw="${p.id}"><div class="opw">${pageStage(p)}</div></div>`).join('')}</div>`;
+}
+
+const TABS=[['resumo','Resumo'],['onepage','Onepage'],['curva','Curva S'],['folha','Folha tarefa'],['estrutura','Estrutura (WBS)'],['atrasos','Atrasos'],['critico','Caminho crítico'],['grupos','Agrupamentos'],['marcos','Marcos'],['qualidade','Qualidade'],['comparar','Comparar versões']];
+
+function viewResumo(){
+  const L=M.leaves.filter(t=>!t.ms),ms=M.leaves.filter(t=>t.ms);
+  const done=L.filter(t=>t.done).length,prog=L.filter(t=>!t.done&&t.pct>0).length,todo=L.length-done-prog;
+  const late=L.filter(t=>t.lateF).length,lateS=L.filter(t=>t.lateS).length;
+  const crit=L.filter(t=>t.crit&&!t.done).length;
+  const pMin=M.pStart,pMax=M.pFinish;
+  const dias=pMax?dd(pMax,S.cutoff):null;
+  const gap=A.real-A.prev;
+  const tot=L.length||1;
+  const top=L.filter(t=>t.lateF).sort((a,b)=>b.delay-a.delay).slice(0,10);
+  const lv1=M.T.filter(t=>t.lvl===1&&t.sum);
+  return `
+  <div class="note">Base de comparação: <b>${baseLabel()}</b>${A.src==='atual'?' — este arquivo não tem linha de base salva; o "previsto" é calculado distribuindo cada tarefa entre seu início e término atuais. Carregue uma versão anterior na aba <i>Comparar versões</i> para medir desvios contra ela.':'.'} Peso das tarefas: <b>${{dur:'duração',work:'trabalho',cost:'custo',eq:'igual'}[S.weight]}</b>. Data de corte: <b>${fd(S.cutoff)}</b>.</div>
+  <div class="grid kpis">
+    ${kpi(S.real==='work'?'% real (trabalho acumulado)':'% físico real',nf(A.real)+'%','ponderado')}
+    ${kpi('% previsto',nf(A.prev)+'%','na data de corte')}
+    ${kpi('Desvio',(gap>0?'+':'')+nf(gap)+' p.p.',gap<-2?'atrás do previsto':'em linha / adiantado',gap<-2?'bad':'ok')}
+    ${kpi('SPI (físico)',A.spi==null?'—':nf(A.spi,2),'real ÷ previsto',A.spi!=null&&A.spi<0.95?'bad':'ok')}
+    ${kpi('Início',fd(pMin),'')}
+    ${kpi('Término',fd(pMax),dias==null?'':(dias>=0?dias+' dias após o corte':'passou há '+(-dias)+' dias'))}
+    ${kpi('Tarefas',L.length,done+' concl. · '+prog+' em and. · '+todo+' não inic.')}
+    ${kpi('Atrasadas',late,'término vencido, não concluídas',late?'bad':'ok')}
+    ${kpi('Início vencido',lateS,'0% e deveriam ter começado',lateS?'warn':'ok')}
+    ${kpi('Críticas abertas',crit,'folga total = 0')}
+    ${kpi('Marcos',ms.filter(t=>t.done).length+' / '+ms.length,'concluídos')}
+  </div>
+  <h3>Situação das tarefas</h3>
+  <div class="card"><div class="stack">
+    <div style="width:${done/tot*100}%;background:var(--done)" title="Concluídas"></div>
+    <div style="width:${(prog-L.filter(t=>!t.done&&t.pct>0&&t.lateF).length)/tot*100}%;background:var(--prog)" title="Em andamento"></div>
+    <div style="width:${late/tot*100}%;background:var(--late)" title="Atrasadas"></div>
+    <div style="width:${(todo-L.filter(t=>t.pct===0&&t.lateF).length)/tot*100}%;background:var(--todo)" title="Não iniciadas"></div></div>
+    <div class="legend"><span style="--c:var(--done)">Concluídas ${done}</span><span style="--c:var(--prog)">Em andamento no prazo</span><span style="--c:var(--late)">Atrasadas ${late}</span><span style="--c:var(--todo)">Não iniciadas no prazo</span></div></div>
+  <div class="cols">
+    <div><h3>Avanço por fase (WBS nível 1)</h3>
+    ${tbl('fases',[
+      {h:'WBS',v:t=>t.wbs},{h:'Fase',v:t=>t.name,wrap:1},
+      {h:'Real %',t:'n',v:t=>t.real},{h:'Prev. %',t:'n',v:t=>t.prev},{h:'Desvio',t:'n',v:t=>t.prev==null?null:t.real-t.prev,f:t=>dev(t.prev==null?null:t.real-t.prev)},
+      {h:'Progresso',v:t=>t.real,f:t=>bar(t.real,t.prev)},
+      {h:'Início',t:'d',v:t=>t.min},{h:'Término',t:'d',v:t=>t.max},{h:'Atras.',t:'n',dp:0,v:t=>t.nLate}
+    ],lv1,{nosearch:1})}</div>
+    <div><h3>10 maiores atrasos (término vencido)</h3>
+    ${top.length?tbl('top10',[
+      {h:'WBS',v:t=>t.wbs},{h:'Tarefa',v:t=>t.name,wrap:1},{h:'Término',t:'d',v:t=>t.finish},{h:'%',t:'n',dp:0,v:t=>t.pct},{h:'Atraso (d)',t:'n',dp:0,v:t=>t.delay}
+    ],top,{nosearch:1}):'<div class="card ok">Nenhuma tarefa com término vencido.</div>'}</div>
+  </div>`;
+}
+
+function chartSvg(C,id,W,H){
+  C=C||A.curve;id=id||'scsvg';W=W||1000;H=H||400;const m={l:46,r:16,t:14,b:34};
+  const n=C.days.length,x=i=>m.l+(W-m.l-m.r)*i/Math.max(1,n-1),y=v=>m.t+(H-m.t-m.b)*(1-v/100);
+  const line=(arr,cls,dash)=>{let d='',pen=false;arr.forEach((v,i)=>{if(v==null){pen=false;return;}d+=(pen?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1);pen=true;});return `<path d="${d}" fill="none" stroke="var(${cls})" stroke-width="2.2" ${dash?'stroke-dasharray="6 5"':''}/>`;};
+  let g='';for(let v=0;v<=100;v+=20)g+=`<line x1="${m.l}" x2="${W-m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${m.l-8}" y="${y(v)+4}" text-anchor="end">${v}%</text>`;
+  const step=Math.max(1,Math.ceil(n/30/Math.max(3,Math.floor(W/95))));let lastM=-1,xt='';
+  C.days.forEach((d,i)=>{const k=d.getFullYear()*12+d.getMonth();if(k!==lastM){lastM=k;if(((k%step)===0||step===1)){xt+=`<line x1="${x(i)}" x2="${x(i)}" y1="${m.t}" y2="${H-m.b}" stroke="var(--grid)"/><text x="${x(i)}" y="${H-12}" text-anchor="middle">${d.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}).replace('.','').replace(' de ','/')}</text>`;}}});
+  const cx=C.cutIdx>=0?x(C.cutIdx):null;
+  return `<svg id="${id}" viewBox="0 0 ${W} ${H}" width="100%" style="display:block">${g}${xt}
+    ${cx!=null?`<line x1="${cx}" x2="${cx}" y1="${m.t}" y2="${H-m.b}" stroke="var(--mute)" stroke-dasharray="3 4"/><text x="${cx+5}" y="${m.t+10}">corte ${fd(S.cutoff)}</text>`:''}
+    ${line(C.plan,'--plan')}${line(C.fc,'--fc',1)}${line(C.act,'--real')}
+    <line id="${id}-hov" x1="0" x2="0" y1="${m.t}" y2="${H-m.b}" stroke="var(--ink)" opacity="0"/></svg>`;
+}
+function viewCurva(){
+  const C=A.curve,K=A.sc;
+  const sums=M.T.filter(t=>t.sum);
+  return viewCards()+`<h3>Curva S</h3><div class="tools"><label class="ctl">Estrutura da curva <select id="scopeSel" style="max-width:520px"><option value="">Projeto inteiro</option>${sums.filter(t=>t.lvl>0).map(t=>`<option value="${t.uid}" ${M.scope===t.uid?'selected':''}>${'\u00a0\u00a0'.repeat(Math.max(0,t.lvl-1))}${esc(t.wbs)} – ${esc(t.name)}</option>`).join('')}</select></label>
+    ${K.node?`<span class="mute">${K.fb?'sem trabalho/peso nessas tarefas — usando peso igual · ':''}${K.n} tarefa(s) em ${esc(K.node.wbs)} – ${esc(K.node.name)}</span>`:''}</div>
+  <div class="note">Curva S ponderada por <b>${{dur:'duração',work:'trabalho',cost:'custo',eq:'igual'}[S.weight]}</b>. <b>Previsto</b> = ${baseLabel()}. <b>Realizado</b> ${S.real==='work'?'= trabalho real acumulado (campo Trabalho real). Quando o XML traz o trabalho real em fases de tempo, usa o histórico dia a dia; senão, distribui o trabalho real de cada tarefa entre o início real e o corte (aproximação linear)':'é reconstruído a partir do % concluído e das datas reais de cada tarefa (aproximação linear)'}.${A.src==='baseline'?' O previsto usa o trabalho da linha de base em fases de tempo, quando disponível.':''} A linha tracejada é a projeção: o restante de cada tarefa distribuído pelas datas atuais.</div>
+  <div class="grid kpis" style="margin-bottom:12px">${kpi('Previsto no corte',nf(K.prev)+'%')}${kpi('Realizado',nf(K.real)+'%')}${kpi('Desvio',(K.real-K.prev>0?'+':'')+nf(K.real-K.prev)+' p.p.','',K.real-K.prev<-2?'bad':'ok')}${kpi('SPI',K.spi==null?'—':nf(K.spi,2))}</div>
+  <div class="card chartwrap" id="scwrap">${chartSvg()}<div class="tip" id="tip"></div>
+    <div class="legend" style="margin-top:6px"><span style="--c:var(--plan)">Previsto</span><span style="--c:var(--real)">Realizado</span><span style="--c:var(--fc)">Projeção (restante pelas datas atuais)</span></div></div>
+  <h3>Dados da curva</h3>
+  ${(()=>{const rows=[];const days=C.days;let last=-1;days.forEach((d,i)=>{const k=d.getFullYear()*12+d.getMonth();if(k!==last||i===days.length-1){rows.push({d,p:C.plan[i],a:C.act[i],f:C.fc[i]});last=k;}});
+    return tbl('curvaS',[{h:'Data',t:'d',v:r=>r.d},{h:'Previsto %',t:'n',v:r=>r.p},{h:'Realizado %',t:'n',v:r=>r.a},{h:'Projeção %',t:'n',v:r=>r.f}],rows,{nosearch:1});})()}`;
+}
+function bindChart(){
+  const svg=$('#scsvg');if(!svg)return;const tip=$('#tip'),hov=$('#scsvg-hov'),wrap=$('#scwrap');
+  const C=A.curve,W=1000,m={l:46,r:16};
+  svg.addEventListener('mousemove',e=>{
+    const r=svg.getBoundingClientRect(),px=(e.clientX-r.left)/r.width*W;
+    const i=Math.max(0,Math.min(C.days.length-1,Math.round((px-m.l)/(W-m.l-m.r)*(C.days.length-1))));
+    const xx=m.l+(W-m.l-m.r)*i/Math.max(1,C.days.length-1);
+    hov.setAttribute('x1',xx);hov.setAttribute('x2',xx);hov.setAttribute('opacity',.35);
+    tip.style.display='block';
+    tip.innerHTML=`<b>${fd(C.days[i])}</b><br>Previsto: ${nf(C.plan[i])}%`+(C.act[i]!=null?`<br>Realizado: ${nf(C.act[i])}%`:'')+(C.fc[i]!=null&&i>C.cutIdx?`<br>Projeção: ${nf(C.fc[i])}%`:'');
+    const wr=wrap.getBoundingClientRect();let lx=e.clientX-wr.left+14;if(lx>wr.width-170)lx-=190;
+    tip.style.left=lx+'px';tip.style.top=(e.clientY-wr.top-10)+'px';
+  });
+  svg.addEventListener('mouseleave',()=>{tip.style.display='none';hov.setAttribute('opacity',0);});
+}
+
+function viewFolha(){
+  const F=S.fl,pdte=v=>{if(!v)return null;const [y,m,d]=v.split('-').map(Number);return new Date(y,m-1,d);};
+  const ia=pdte(F.ini.a),ib=pdte(F.ini.b),ta=pdte(F.ter.a),tb=pdte(F.ter.b),q=F.q.trim().toLowerCase();
+  const act=!!(ia||ib||ta||tb||q);
+  const ok=t=>{const st=sod(t.start),fi=sod(t.finish);
+    if(ia&&st<ia)return false;if(ib&&st>ib)return false;if(ta&&fi<ta)return false;if(tb&&fi>tb)return false;
+    if(q&&!(t.wbs+' '+t.name).toLowerCase().includes(q))return false;return true;};
+  const hit=new Set(),cnt=new Map();let nHit=0;
+  for(const t of M.leaves){if(!ok(t))continue;nHit++;for(const a of t.path){hit.add(a.uid);if(a!==t)cnt.set(a.uid,(cnt.get(a.uid)||0)+1);}}
+  const rows=[];
+  const walk=t=>{if(!hit.has(t.uid)&&act)return;rows.push(t);if(t.sum&&!F.c.has(t.uid))t.kids.forEach(walk);};
+  M.T.filter(t=>t.lvl===0||!t.parent).forEach(walk);
+  TABLES.folha={cols:[
+    {h:'WBS',v:t=>t.wbs},{h:'Tarefa',v:t=>t.name},{h:'Início',t:'d',v:t=>t.start},{h:'Término',t:'d',v:t=>t.finish},{h:'Dur. (d)',t:'n',dp:0,v:t=>t.dur},
+    {h:'Real %',t:'n',v:t=>t.real},{h:'Prev. %',t:'n',v:t=>t.prev},{h:'Folga (d)',t:'n',dp:0,v:t=>t.sum?null:t.slack},{h:'Crítica',v:t=>t.crit?'Sim':''},{h:'Tipo',v:t=>t.sum?'Resumo':t.ms?'Marco':'Tarefa'},{h:'Recursos',v:t=>t.res.join(', ')}
+  ],rows:M.T,shown:rows,opt:{},raw:1};
+  const cut=sod(S.cutoff),day=n=>new Date(cut.getFullYear(),cut.getMonth(),cut.getDate()+n),dow=(cut.getDay()+6)%7;
+  const di=(a,k,f)=>`<input type="date" data-fd="${k}.${f}" value="${a}">`;
+  return `<div class="note">Filtre pelas colunas <b>Início</b> e <b>Término</b> do Project (as duas condições valem juntas; deixe em branco o que não quiser usar). Aparecem as tarefas que atendem ao filtro, com todas as <b>tarefas resumo</b> da estrutura WBS acima delas. As tarefas resumo mostram as próprias datas e quantas tarefas filtradas há dentro.</div>
+  <div class="tools"><label class="ctl">Início de ${di(F.ini.a,'ini','a')} até ${di(F.ini.b,'ini','b')}</label>
+    <label class="ctl">Término de ${di(F.ter.a,'ter','a')} até ${di(F.ter.b,'ter','b')}</label>
+    <input type="search" id="fQ" placeholder="Buscar por nome ou WBS…" value="${esc(F.q)}" style="min-width:200px"></div>
+  <div class="tools"><span class="mute">Atalhos:</span>
+    <button data-fpre="sem" title="Em andamento na semana do corte (Início até sexta e Término a partir de segunda)">Semana do corte</button>
+    <button data-fpre="prox" title="Em andamento entre o corte e +14 dias">Próximos 14 dias</button>
+    <button data-fpre="ini" title="Que começam na semana seguinte ao corte">Começam na próxima semana</button>
+    <button data-fpre="ter" title="Que terminam na semana do corte">Terminam na semana</button>
+    <button data-fpre="clear">Limpar filtros</button><span class="spacer"></span>
+    <button data-fx="all">Expandir tudo</button><button data-fx="res">Só resumos</button><button data-csv="folha">Exportar CSV</button></div>
+  <div class="mute" style="margin:2px 0 6px">${act?`${nHit} tarefa(s) no filtro · ${rows.length} linha(s) exibidas`:`Sem filtro · ${rows.length} linha(s)`}</div>
+  <div class="tw" id="tb-folha"><table><thead><tr><th>WBS</th><th>Tarefa</th><th class="n">Início</th><th class="n">Término</th><th class="n">Dur. (d)</th><th class="n">Real %</th><th class="n">Prev. %</th><th>Progresso</th><th class="n">Folga (d)</th><th>Situação</th></tr></thead><tbody>
+  ${rows.slice(0,3000).map(t=>{
+    const ind=Math.max(0,t.lvl-1)*16,tog=t.sum?`<span class="toggle" data-ftog="${t.uid}">${F.c.has(t.uid)?'▸':'▾'}</span>`:'<span class="toggle"></span>';
+    const dv=t.prev==null?null:t.real-t.prev;
+    return `<tr class="${t.sum?'sum':''}"><td>${esc(t.wbs)}</td><td class="wrap" style="padding-left:${ind+9}px">${tog}${esc(t.name)}${t.sum&&act?` <span class="mute" style="font-weight:400">(${cnt.get(t.uid)||0})</span>`:''}</td><td class="n">${fd(t.start)}</td><td class="n">${fd(t.finish)}</td><td class="n">${t.ms?'marco':nf(t.dur,0)}</td><td class="n">${nf(t.real)}</td><td class="n">${t.prev==null?'':nf(t.prev)}</td><td>${bar(t.real,t.prev)}</td><td class="n">${t.sum?'':nf(t.slack,0)}</td><td>${t.leaf?tagStat(t)+(t.crit&&!t.done?' <span class="tag t-crit">Crítica</span>':''):(t.nLate?`<span class="tag t-late">${t.nLate} atras.</span>`:'')}</td></tr>`;}).join('')}</tbody></table></div>`;
+}
+function viewEstrutura(){
+  if(S.initCollapse){S.collapsed=new Set(M.T.filter(t=>t.sum&&t.lvl>=2).map(t=>t.uid));S.initCollapse=false;}
+  const q=S.treeQ.toLowerCase();
+  let rows;
+  if(q){rows=M.T.filter(t=>(t.wbs+' '+t.name).toLowerCase().includes(q));}
+  else{rows=[];const walk=t=>{rows.push(t);if(t.sum&&!S.collapsed.has(t.uid))t.kids.forEach(walk);};M.T.filter(t=>t.lvl===0||!t.parent).forEach(walk);}
+  const maxL=Math.max(...M.T.map(t=>t.lvl));
+  const slackF=t=>t.sum?'':nf(t.slack,0);
+  return `<div class="tools"><input type="search" id="treeQ" placeholder="Buscar por nome ou WBS…" value="${esc(S.treeQ)}" style="min-width:260px">
+    <button data-expand="all">Expandir tudo</button>${Array.from({length:Math.min(maxL,4)},(_,i)=>`<button data-expand="${i+1}">Até nível ${i+1}</button>`).join('')}
+    <span class="spacer"></span><button data-csv="estrutura">Exportar CSV</button></div>
+  <div class="tw" id="tb-estrutura">${(()=>{
+    TABLES.estrutura={cols:[
+      {h:'WBS',v:t=>t.wbs},{h:'Tarefa',v:t=>t.name},{h:'Início',t:'d',v:t=>t.start},{h:'Término',t:'d',v:t=>t.finish},{h:'Dur. (d)',t:'n',dp:0,v:t=>t.dur},
+      {h:'Real %',t:'n',v:t=>t.real},{h:'Prev. %',t:'n',v:t=>t.prev},{h:'Desvio',t:'n',v:t=>t.prev==null?null:t.real-t.prev},{h:'Folga (d)',t:'n',dp:0,v:t=>t.sum?null:t.slack},{h:'Crítica',v:t=>t.crit?'Sim':''},{h:'Recursos',v:t=>t.res.join(', ')}
+    ],rows:M.T,shown:rows,opt:{},raw:1};
+    return `<table><thead><tr><th>WBS</th><th>Tarefa</th><th class="n">Início</th><th class="n">Término</th><th class="n">Dur. (d)</th><th class="n">Real %</th><th class="n">Prev. %</th><th class="n">Desvio</th><th>Progresso</th><th class="n">Folga (d)</th><th>Situação</th></tr></thead><tbody>${rows.slice(0,1500).map(t=>{
+      const ind=q?0:Math.max(0,t.lvl-1)*16,tog=t.sum&&!q?`<span class="toggle" data-tog="${t.uid}">${S.collapsed.has(t.uid)?'▸':'▾'}</span>`:'<span class="toggle"></span>';
+      const dv=t.prev==null?null:t.real-t.prev;
+      return `<tr class="${t.sum?'sum':''}"><td>${esc(t.wbs)}</td><td class="wrap" style="padding-left:${ind+9}px">${tog}${esc(t.name)}</td><td class="n">${fd(t.start)}</td><td class="n">${fd(t.finish)}</td><td class="n">${t.ms?'marco':nf(t.dur,0)}</td><td class="n">${nf(t.real)}</td><td class="n">${t.prev==null?'':nf(t.prev)}</td><td class="n">${dev(dv)}</td><td>${bar(t.real,t.prev)}</td><td class="n">${slackF(t)}</td><td>${t.leaf?tagStat(t)+(t.crit&&!t.done?' <span class="tag t-crit">Crítica</span>':''):(t.nLate?`<span class="tag t-late">${t.nLate} atras.</span>`:'')}</td></tr>`;}).join('')}</tbody></table>`;})()}</div>`;
+}
+
+function late_rows(){
+  return M.leaves.filter(t=>!t.done&&!t.ms||(!t.done&&t.ms)).filter(t=>{
+    if(S.late==='fin')return t.lateF;
+    if(S.late==='ini')return t.lateS&&!t.lateF;
+    if(S.late==='deriva')return t.varF!=null&&t.varF>0;
+    return t.lateF||t.lateS||(t.varF!=null&&t.varF>0);
+  });
+}
+function viewAtrasos(){
+  const rows=late_rows();
+  const opts=[['all','Todas'],['fin','Término vencido'],['ini','Início vencido (0%)'],...(A.src!=='atual'?[['deriva','Deriva vs base (> 0 d)']]:[])];
+  return `<div class="note">Atrasos medidos em relação à data de corte <b>${fd(S.cutoff)}</b>. <b>Término vencido</b>: término anterior ao corte e % &lt; 100. <b>Início vencido</b>: início anterior ao corte e ainda 0%.${A.src!=='atual'?' <b>Deriva</b>: término atual posterior ao da '+baseLabel()+'.':''}</div>
+  <div class="tools"><label class="ctl">Mostrar <select id="lateSel">${opts.map(o=>`<option value="${o[0]}" ${S.late===o[0]?'selected':''}>${o[1]}</option>`).join('')}</select></label></div>
+  ${tbl('atrasos',[
+    {h:'WBS',v:t=>t.wbs},{h:'Tarefa',v:t=>t.name,wrap:1},{h:'Fase',v:t=>(t.path[1]||t).name},{h:'Início',t:'d',v:t=>t.start},{h:'Término',t:'d',v:t=>t.finish},
+    {h:'%',t:'n',dp:0,v:t=>t.pct},{h:'Atraso (d)',t:'n',dp:0,v:t=>t.delay},{h:'Folga (d)',t:'n',dp:0,v:t=>t.slack},{h:'Crítica',v:t=>t.crit?'Sim':''},{h:'Situação',v:t=>t.lateF?'Término vencido':t.lateS?'Início vencido':'Deriva',f:t=>tagStat(t)},...baseCols(),{h:'Recursos',v:t=>t.res.join(', ')}
+  ],rows)}`;
+}
+
+function viewCritico(){
+  const x=S.slackMax;
+  const rows=M.leaves.filter(t=>!t.done&&(S.critMode==='crit'?t.crit:(!t.crit&&t.slack<=x)));
+  return `<div class="tools"><label class="ctl">Mostrar <select id="critSel"><option value="crit" ${S.critMode==='crit'?'selected':''}>Críticas abertas</option><option value="near" ${S.critMode==='near'?'selected':''}>Quase críticas</option></select></label>
+  ${S.critMode==='near'?`<label class="ctl">folga até <input type="number" id="slackMax" value="${x}" min="1" style="width:70px"> dias</label>`:''}</div>
+  <div class="note">Caminho crítico conforme o campo <i>Crítica</i> do MS Project (folga total ≤ limite configurado no projeto). Folga em dias úteis (${nf(M.mpd,1)} h/dia).</div>
+  ${tbl('critico',[
+    {h:'WBS',v:t=>t.wbs},{h:'Tarefa',v:t=>t.name,wrap:1},{h:'Fase',v:t=>(t.path[1]||t).name},{h:'Início',t:'d',v:t=>t.start},{h:'Término',t:'d',v:t=>t.finish},
+    {h:'Dur. (d)',t:'n',dp:0,v:t=>t.dur},{h:'%',t:'n',dp:0,v:t=>t.pct},{h:'Folga (d)',t:'n',dp:0,v:t=>t.slack},{h:'Situação',v:t=>t.stat,f:t=>tagStat(t)},{h:'Predec.',t:'n',dp:0,v:t=>t.preds.length},{h:'Suces.',t:'n',dp:0,v:t=>t.succ}
+  ],rows)}`;
+}
+
+function groupKeys(){
+  const o=[['wbs1','WBS – nível 1'],['wbs2','WBS – nível 2'],['wbs3','WBS – nível 3'],['cwa','CWA (detectado no nome)'],['cwp','CWP (detectado no nome)'],['res','Recurso']];
+  for(const [id,al] of Object.entries(M.fields)){
+    const vals=new Set();let cnt=0;
+    for(const t of M.leaves){const v=t.ext[id];if(v!=null&&v!==''){cnt++;vals.add(v);}}
+    if(cnt>0&&vals.size>=2&&vals.size<=200&&![...vals].every(v=>/^-?[\d.,]+$/.test(v)))o.push(['f:'+id,'Campo: '+al]);
+  }
+  return o;
+}
+function keyOf(t,g){
+  if(g.startsWith('wbs')){const n=+g.slice(3);return (t.path[n]&&t.path[n]!==t)?t.path[n].wbs+' '+t.path[n].name:(t.path[n]===t?t.wbs+' '+t.name:'(sem nível '+n+')');}
+  if(g==='cwa'||g==='cwp'){const re=g==='cwa'?/CWA[\s\-_]*0*(\d+)/i:/CWP[\s\-_]*0*(\d+)/i,L=g.toUpperCase();
+    for(let i=t.path.length-1;i>=0;i--){const m=re.exec(t.path[i].name);if(m)return L+' '+m[1].padStart(2,'0');}return '(não identificado)';}
+  if(g==='res')return t.res.length?t.res.join(', '):'(sem recurso)';
+  if(g.startsWith('f:'))return t.ext[g.slice(2)]||'(vazio)';
+  return '';
+}
+function viewGrupos(){
+  const keys=groupKeys();if(!keys.some(k=>k[0]===S.group))S.group='wbs1';
+  const map=new Map();
+  for(const t of M.leaves){const k=keyOf(t,S.group);let g=map.get(k);if(!g){g={k,n:0,W:0,WR:0,WP:0,late:0,crit:0,done:0,min:null,max:null};map.set(k,g);}
+    g.n++;g.W+=t.wt;g.WR+=t.wt*t.rf;g.WP+=t.wt*t.plan;if(t.lateF)g.late++;if(t.crit&&!t.done)g.crit++;if(t.done)g.done++;
+    if(!g.min||t.start<g.min)g.min=t.start;if(!g.max||t.finish>g.max)g.max=t.finish;}
+  const rows=[...map.values()].map(g=>({...g,real:g.W?g.WR/g.W*100:null,prev:g.W?g.WP/g.W*100:null,peso:g.W/A.W*100}));
+  return `<div class="tools"><label class="ctl">Agrupar por <select id="grpSel">${keys.map(k=>`<option value="${k[0]}" ${S.group===k[0]?'selected':''}>${esc(k[1])}</option>`).join('')}</select></label></div>
+  ${tbl('grupos',[
+    {h:'Grupo',v:r=>r.k,wrap:1},{h:'Tarefas',t:'n',dp:0,v:r=>r.n},{h:'Peso %',t:'n',v:r=>r.peso},{h:'Real %',t:'n',v:r=>r.real},{h:'Prev. %',t:'n',v:r=>r.prev},
+    {h:'Desvio',t:'n',v:r=>r.real==null?null:r.real-r.prev,f:r=>dev(r.real==null?null:r.real-r.prev)},{h:'Progresso',v:r=>r.real,f:r=>bar(r.real,r.prev)},
+    {h:'Início',t:'d',v:r=>r.min},{h:'Término',t:'d',v:r=>r.max},{h:'Concl.',t:'n',dp:0,v:r=>r.done},{h:'Atras.',t:'n',dp:0,v:r=>r.late},{h:'Críticas',t:'n',dp:0,v:r=>r.crit}
+  ],rows)}`;
+}
+
+function viewMarcos(){
+  const all=M.leaves.filter(t=>t.ms);
+  const rows=all.filter(t=>S.msFilter==='all'||(S.msFilter==='open'&&!t.done)||(S.msFilter==='late'&&t.lateF)||(S.msFilter==='done'&&t.done));
+  return `<div class="tools"><label class="ctl">Mostrar <select id="msSel">${[['all','Todos'],['open','Pendentes'],['late','Atrasados'],['done','Concluídos']].map(o=>`<option value="${o[0]}" ${S.msFilter===o[0]?'selected':''}>${o[1]}</option>`).join('')}</select></label></div>
+  ${tbl('marcos',[
+    {h:'WBS',v:t=>t.wbs},{h:'Marco',v:t=>t.name,wrap:1},{h:'Data',t:'d',v:t=>t.finish},{h:'Situação',v:t=>t.stat,f:t=>tagStat(t)},{h:'Atraso (d)',t:'n',dp:0,v:t=>t.delay},
+    {h:'Folga (d)',t:'n',dp:0,v:t=>t.slack},{h:'Crítico',v:t=>t.crit?'Sim':''},...baseCols()
+  ],rows)}`;
+}
+
+function checks(){
+  const cut=eod(S.cutoff);
+  const L=M.leaves,inc=L.filter(t=>!t.done),incN=inc.filter(t=>!t.ms),n=incN.length||1;
+  const C=[
+    ['Sem predecessora','Tarefas abertas sem nenhum vínculo de entrada',incN.filter(t=>!t.preds.length),n,5],
+    ['Sem sucessora','Tarefas abertas sem vínculo de saída',incN.filter(t=>!t.succ),n,5],
+    ['Lag negativo (antecipação)','Vínculos com lead',L.filter(t=>t.preds.some(p=>p.lag<0)),L.length,0],
+    ['Lag positivo','Vínculos com defasagem positiva',L.filter(t=>t.preds.some(p=>p.lag>0)),L.length,5],
+    ['Vínculos não FS','Pelo menos um vínculo FF, SS ou SF',L.filter(t=>t.preds.some(p=>p.type!==1)),L.length,10],
+    ['Restrição rígida','Deve começar/terminar em (abertas)',inc.filter(t=>t.constr===2||t.constr===3),inc.length||1,5],
+    ['Duração > 44 dias úteis','Tarefas abertas muito longas',incN.filter(t=>t.dur>44),n,5],
+    ['Folga total > 44 dias','Tarefas abertas com muita folga',incN.filter(t=>t.slack>44),n,5],
+    ['Sem recurso','Tarefas abertas sem atribuição',incN.filter(t=>!t.res.length),n,null],
+    ['Término vencido','Término anterior ao corte, não concluídas',L.filter(t=>t.lateF),L.length,0],
+    ['% sem data real de início','Progresso > 0 sem início real',L.filter(t=>t.pct>0&&!t.as),L.length,0],
+    ['Concluída sem término real','100% sem data de término real',L.filter(t=>t.done&&!t.af),L.length,0],
+    ['Data real no futuro','Início/término real depois do corte',L.filter(t=>(t.as&&t.as>cut)||(t.af&&t.af>cut)),L.length,0],
+    ['Previsto no passado sem andamento','Início anterior ao corte e 0%',L.filter(t=>t.lateS),L.length,0],
+  ];
+  return C.map((c,i)=>({id:i,label:c[0],desc:c[1],list:c[2],base:c[3],lim:c[4],pct:c[2].length/c[3]*100}));
+}
+function viewQualidade(){
+  const C=checks();
+  if(S.chk==null||!C[S.chk])S.chk=0;
+  const sel=C[S.chk];
+  return `<div class="note">Verificações de saúde do cronograma (inspiradas nos 14 pontos DCMA). Clique em um cartão para ver as tarefas. Limites de referência são orientativos.</div>
+  <div class="chk">${C.map(c=>{const bad=c.lim!=null&&c.pct>c.lim,cls=c.list.length===0?'ok':bad?'bad':'warn';
+    return `<div class="card ${S.chk===c.id?'on':''}" data-chk="${c.id}"><div class="mute" style="font-size:12px">${esc(c.label)}</div><div class="big ${cls}">${c.list.length} <span class="mute" style="font-size:13px;font-weight:400">(${nf(c.pct)}%)</span></div><div class="mute" style="font-size:12px">${esc(c.desc)}${c.lim!=null?' · ref. ≤ '+c.lim+'%':''}</div></div>`;}).join('')}</div>
+  <h3>${esc(sel.label)} — ${sel.list.length} tarefa(s)</h3>
+  ${tbl('qualidade',[{h:'WBS',v:t=>t.wbs},{h:'Tarefa',v:t=>t.name,wrap:1},{h:'Início',t:'d',v:t=>t.start},{h:'Término',t:'d',v:t=>t.finish},{h:'Dur. (d)',t:'n',dp:0,v:t=>t.dur},{h:'%',t:'n',dp:0,v:t=>t.pct},{h:'Folga (d)',t:'n',dp:0,v:t=>t.slack},{h:'Predec.',t:'n',dp:0,v:t=>t.preds.length},{h:'Suces.',t:'n',dp:0,v:t=>t.succ}],sel.list)}`;
+}
+
+function viewComparar(){
+  let body='';
+  if(CMP){
+    const cur=M.byUid,old=CMP.byUid;
+    const rows=[];
+    for(const t of M.leaves){const o=old.get(t.uid);
+      if(!o)rows.push({k:'Nova',t,o:null});
+      else{const ds=dd(t.start,o.start),df=dd(t.finish,o.finish),dp=t.pct-o.pct,dr=t.dur-o.dur;
+        if(ds||df||dp||Math.abs(dr)>0.01)rows.push({k:'Alterada',t,o,ds,df,dp,dr});}}
+    for(const o of CMP.leaves)if(!cur.has(o.uid))rows.push({k:'Removida',t:o,o});
+    const cnt=k=>rows.filter(r=>r.k===k).length;
+    const pf=M.pFinish&&CMP.pFinish?dd(M.pFinish,CMP.pFinish):null;
+    body=`<div class="grid kpis" style="margin:12px 0">
+      ${kpi('Versão anterior',esc(CMP.file),'')}
+      ${kpi('Término do projeto',pf==null?'—':(pf>0?'+':'')+pf+' d',fd(CMP.pFinish)+' → '+fd(M.pFinish),pf>0?'bad':pf<0?'ok':'')}
+      ${kpi('Tarefas alteradas',cnt('Alterada'),'')}${kpi('Novas',cnt('Nova'),'')}${kpi('Removidas',cnt('Removida'),'')}
+      ${kpi('Término mais tarde',rows.filter(r=>r.df>0).length,'tarefas',rows.filter(r=>r.df>0).length?'warn':'')}
+    </div>
+    <div class="tools"><label class="ctl"><input type="checkbox" id="useCmp" ${S.base==='compare'||(S.base==='auto'&&!M.hasBase)?'checked':''}> Usar esta versão como base da Curva S e dos desvios</label></div>
+    ${tbl('comparar',[
+      {h:'Tipo',v:r=>r.k},{h:'WBS',v:r=>r.t.wbs},{h:'Tarefa',v:r=>r.t.name,wrap:1},
+      {h:'Início ant.',t:'d',v:r=>r.o?r.o.start:null},{h:'Início atual',t:'d',v:r=>r.k==='Removida'?null:r.t.start},{h:'Δ início (d)',t:'n',dp:0,v:r=>r.ds},
+      {h:'Térm. ant.',t:'d',v:r=>r.o?r.o.finish:null},{h:'Térm. atual',t:'d',v:r=>r.k==='Removida'?null:r.t.finish},{h:'Δ término (d)',t:'n',dp:0,v:r=>r.df,f:r=>r.df==null?'':`<span class="${r.df>0?'bad':r.df<0?'ok':''}">${r.df>0?'+':''}${r.df}</span>`},
+      {h:'% ant.',t:'n',dp:0,v:r=>r.o?r.o.pct:null},{h:'% atual',t:'n',dp:0,v:r=>r.k==='Removida'?null:r.t.pct},{h:'Δ %',t:'n',dp:0,v:r=>r.dp},{h:'Δ dur. (d)',t:'n',v:r=>r.dr}
+    ],rows)}`;
+  }
+  return `<div class="note">Carregue um XML de uma <b>versão anterior</b> do mesmo cronograma (por exemplo, o da semana passada ou a linha de base exportada). As tarefas são casadas pelo UID do MS Project. O resultado mostra o que mudou e permite usar essa versão como base de comparação na Curva S.</div>
+  <div class="tools"><button class="pri" id="btnCmp">${CMP?'Trocar versão anterior…':'Carregar versão anterior (.xml)…'}</button>${CMP?'<button id="btnCmpX">Remover</button>':''}</div>${body}`;
+}
+
+/* ============ render ============ */
+const VIEWS={folha:viewFolha,onepage:viewOnepage,resumo:viewResumo,curva:viewCurva,estrutura:viewEstrutura,atrasos:viewAtrasos,critico:viewCritico,grupos:viewGrupos,marcos:viewMarcos,qualidade:viewQualidade,comparar:viewComparar};
+function render(){
+  const v=$('#view');
+  if(!M){
+    $('#nav').innerHTML='';$('#ctls').innerHTML='';
+    v.innerHTML=`<div class="drop" id="drop"><h2>Arraste o cronograma aqui</h2>
+      <p>Arquivo <b>.xml</b> do MS Project (Arquivo › Salvar como › <i>XML do Project</i>)</p>
+      <p><button class="pri" id="btnOpen">Escolher arquivo…</button></p>
+      <p style="font-size:12.5px;margin-top:22px">Tudo roda neste navegador, offline. O arquivo não é enviado para lugar nenhum.<br>Arquivos <b>.mpp</b> não são lidos diretamente — salve como XML no MS Project.</p></div>`;
+    return;
+  }
+  $('#nav').innerHTML=TABS.map(t=>`<button data-tab="${t[0]}" class="${S.tab===t[0]?'on':''}">${t[1]}</button>`).join('');
+  $('#ctls').innerHTML=`<label class="ctl">Data de corte <input type="date" id="cutoff" value="${isoDay(S.cutoff)}"></label>
+    ${M.status?`<button id="btnStatus" title="Data de status do projeto">Status ${fd(M.status)}</button>`:''}<button id="btnToday">Hoje</button>
+    <label class="ctl">Peso <select id="weight">${[['dur','Duração'],['work','Trabalho'],['cost','Custo'],['eq','Igual']].map(o=>`<option value="${o[0]}" ${S.weight===o[0]?'selected':''}>${o[1]}</option>`).join('')}</select></label>
+    <label class="ctl">Realizado <select id="realSel"><option value="work" ${S.real==='work'?'selected':''}>Trabalho real acum.</option><option value="pct" ${S.real==='pct'?'selected':''}>% concluído</option></select></label>
+    <label class="ctl">Base <select id="baseSel"><option value="auto" ${S.base==='auto'?'selected':''}>Automática</option>${M.hasBase?`<option value="baseline" ${S.base==='baseline'?'selected':''}>Linha de base</option>`:''}${CMP?`<option value="compare" ${S.base==='compare'?'selected':''}>Versão anterior</option>`:''}<option value="atual" ${S.base==='atual'?'selected':''}>Datas atuais</option></select></label>
+    <button id="btnAdd">+ Cronograma</button>${S.models.length>1?`<select id="actSel">${S.models.map((m,i)=>`<option value="${i}" ${m===M?'selected':''}>${esc(m.name)}</option>`).join('')}</select>`:''}<button id="btnNew">Abrir outro</button>`;
+  $('#fname').textContent=M.file+' · '+M.title;
+  v.innerHTML=VIEWS[S.tab]();
+  for(const id of Object.keys(TABLES))drawTable(id);
+  if(S.tab==='curva')bindChart();
+  if(S.tab==='onepage'){fitStage();fillPhotos();}
+}
+
+/* ============ eventos ============ */
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-tab],[data-sort],[data-csv],[data-tog],[data-expand],[data-chk],[data-oprm],[data-cki],[data-cup],[data-cdn],#opNew,#opMan,[data-mact],[data-mrm],[data-phrm],[data-pgsel],[data-ftog],[data-fx],[data-fpre],#bkSave,#bkOpen,#pdef,#weekAuto,.ph,#btnAdd,#opAdd,#phMinus,#phPlus,#btnPrint,[data-cardrm],[data-cardlvl],[data-cardscope],#cardAdd,#cardClear,#btnOpen,#btnNew,#btnToday,#btnStatus,#btnCmp,#btnCmpX');if(!t)return;
+  if(t.dataset.tab){S.tab=t.dataset.tab;render();window.scrollTo(0,0);}
+  else if(t.dataset.sort){const [id,i]=t.dataset.sort.split('|');const c=S.sort[id];S.sort[id]=c&&c.i==+i?{i:+i,dir:-c.dir}:{i:+i,dir:1};drawTable(id);}
+  else if(t.dataset.csv)exportCsv(t.dataset.csv);
+  else if(t.dataset.tog){const u=+t.dataset.tog;S.collapsed.has(u)?S.collapsed.delete(u):S.collapsed.add(u);render();}
+  else if(t.dataset.expand){const l=t.dataset.expand;S.collapsed=l==='all'?new Set():new Set(M.T.filter(x=>x.sum&&x.lvl>=+l).map(x=>x.uid));render();}
+  else if(t.dataset.chk!=null){S.chk=+t.dataset.chk;render();}
+  else if(t.dataset.phrm!=null){e.stopPropagation();const [pg,i]=t.dataset.phrm.split(':');idbDel(phKey(pg,+i));showPhoto(pg,+i,null);}
+  else if(t.dataset.ftog){const u=+t.dataset.ftog;S.fl.c.has(u)?S.fl.c.delete(u):S.fl.c.add(u);render();}
+  else if(t.dataset.fx){S.fl.c=t.dataset.fx==='all'?new Set():new Set(M.T.filter(x=>x.sum).map(x=>x.uid));render();}
+  else if(t.dataset.fpre){const F=S.fl,cut=sod(S.cutoff),dw=(cut.getDay()+6)%7,dy=n=>isoDay(new Date(cut.getFullYear(),cut.getMonth(),cut.getDate()+n));
+    F.ini={a:'',b:''};F.ter={a:'',b:''};const k=t.dataset.fpre;
+    if(k==='sem'){F.ter.a=dy(-dw);F.ini.b=dy(4-dw);}
+    else if(k==='prox'){F.ter.a=dy(0);F.ini.b=dy(14);}
+    else if(k==='ini'){F.ini.a=dy(7-dw);F.ini.b=dy(11-dw);}
+    else if(k==='ter'){F.ter.a=dy(-dw);F.ter.b=dy(4-dw);}
+    render();}
+  else if(t.dataset.pgsel){S.pgId=t.dataset.pgsel;render();}
+  else if(t.id==='weekAuto'){S.week='';saveOp();render();}
+  else if(t.id==='bkSave'){exportReport();}
+  else if(t.id==='bkOpen'){$('#bkIn').click();}
+  else if(t.id==='pdef'){const P=CP();P.auto=true;P.cards=null;saveOp();render();}
+  else if(t.classList.contains('ph')){S.phTarget={pg:t.dataset.pg,slot:+t.dataset.slot};$('#phIn').click();}
+  else if(t.dataset.oprm!=null){CP().cards.splice(+t.dataset.oprm,1);cardsEdited();}
+  else if(t.dataset.mact!=null){setActive(+t.dataset.mact);}
+  else if(t.dataset.mrm!=null){if(confirm('Remover este cronograma da análise?'))removeModel(+t.dataset.mrm);}
+  else if(t.id==='btnAdd')$('#fileAdd').click();
+  else if(t.id==='opMan'){CP().cards.push({t:'',k:[],man:{real:'',prev:'',ad:'',date:'',label:''}});cardsEdited();}
+  else if(t.id==='opNew'){CP().cards.push({t:'',k:[]});cardsEdited();}
+  else if(t.dataset.cki!=null){const [i,j]=t.dataset.cki.split(':').map(Number);CP().cards[i].k.splice(j,1);cardsEdited();}
+  else if(t.dataset.cup!=null){const i=+t.dataset.cup;if(i>0){[CP().cards[i-1],CP().cards[i]]=[CP().cards[i],CP().cards[i-1]];cardsEdited();}}
+  else if(t.dataset.cdn!=null){const i=+t.dataset.cdn;if(i<CP().cards.length-1){[CP().cards[i+1],CP().cards[i]]=[CP().cards[i],CP().cards[i+1]];cardsEdited();}}
+  else if(t.id==='phMinus'){CP().nPhotos=Math.max(1,CP().nPhotos-1);saveOp();render();}
+  else if(t.id==='phPlus'){CP().nPhotos=Math.min(CP().type==='disc'?4:9,CP().nPhotos+1);saveOp();render();}
+  else if(t.id==='btnPrint'){window.print();}
+  else if(t.dataset.cardrm){S.cards=S.cards.filter(u=>u!==+t.dataset.cardrm);saveCards();render();}
+  else if(t.dataset.cardlvl){const l=+t.dataset.cardlvl;for(const x of M.T.filter(x=>x.sum&&x.lvl===l))if(!S.cards.includes(x.uid))S.cards.push(x.uid);saveCards();render();}
+  else if(t.dataset.cardscope){M.scope=+t.dataset.cardscope;reanalyze();}
+  else if(t.id==='cardAdd'){const u=+$('#cardSel').value;if(!S.cards.includes(u))S.cards.push(u);saveCards();render();}
+  else if(t.id==='cardClear'){S.cards=[];saveCards();render();}
+  else if(t.id==='btnOpen'||t.id==='btnNew')$('#fileIn').click();
+  else if(t.id==='btnToday'){S.cutoff=sod(new Date());reanalyze();}
+  else if(t.id==='btnStatus'){S.cutoff=M.status;reanalyze();}
+  else if(t.id==='btnCmp')$('#fileCmp').click();
+  else if(t.id==='btnCmpX'){M.cmp=null;CMP=null;if(S.base==='compare')S.base='auto';reanalyze();}
+});
+document.addEventListener('input',e=>{
+  const t=e.target;
+  if(t.dataset.filter){S.filter[t.dataset.filter]=t.value;drawTable(t.dataset.filter);}
+  else if(t.id==='fQ'){S.fl.q=t.value;const p=t.selectionStart;render();const n=$('#fQ');n.focus();n.setSelectionRange(p,p);}
+  else if(t.id==='weekIn'){S.week=t.value;saveOp();document.querySelectorAll('.wkv').forEach(e=>e.textContent=weekStr());}
+  else if(t.dataset.pf){const [id,f]=t.dataset.pf.split(':');const P=S.pages.find(p=>p.id===id);if(P){P[f]=t.value;saveOp();}}
+  else if(t.dataset.mname!=null){S.models[+t.dataset.mname].name=t.value;saveOp();}
+  else if(t.id==='treeQ'){S.treeQ=t.value;const p=t.selectionStart;render();const n=$('#treeQ');n.focus();n.setSelectionRange(p,p);}
+});
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.id==='cutoff'&&t.value){const [y,m,d]=t.value.split('-').map(Number);S.cutoff=new Date(y,m-1,d);reanalyze();}
+  else if(t.id==='thrOk'||t.id==='thrWarn'){S.thr.ok=+$('#thrOk').value||95;S.thr.warn=+$('#thrWarn').value||85;saveCards();render();}
+  else if(t.dataset.fd){const [k,f]=t.dataset.fd.split('.');S.fl[k][f]=t.value;render();}
+  else if(t.id==='scopeSel'){M.scope=t.value?+t.value:null;reanalyze();}
+  else if(t.id==='weight'){S.weight=t.value;reanalyze();}
+  else if(t.id==='realSel'){S.real=t.value;if(S.real==='work')S.weight='work';reanalyze();}
+  else if(t.id==='baseSel'){S.base=t.value;reanalyze();}
+  else if(t.id==='lateSel'){S.late=t.value;render();}
+  else if(t.id==='critSel'){S.critMode=t.value;render();}
+  else if(t.id==='slackMax'){S.slackMax=Math.max(1,+t.value||10);render();}
+  else if(t.id==='grpSel'){S.group=t.value;render();}
+  else if(t.id==='msSel'){S.msFilter=t.value;render();}
+  else if(t.id==='useCmp'){S.base=t.checked?'compare':'auto';reanalyze();}
+  else if(t.id==='fileIn'&&t.files[0]){loadMain(t.files,false);t.value='';}
+  else if(t.id==='fileAdd'&&t.files[0]){loadMain(t.files,true);t.value='';}
+  else if(t.id==='bkIn'&&t.files[0]){importReport(t.files[0]);t.value='';}
+  else if(t.id==='phIn'&&t.files[0]){setPhoto(S.phTarget.pg,S.phTarget.slot,t.files[0]);t.value='';}
+  else if(t.id==='actSel'){setActive(+t.value);}
+  else if(t.dataset.cadd!=null){if(t.value){const c=CP().cards[+t.dataset.cadd];if(!c.k.includes(t.value))c.k.push(t.value);cardsEdited();}}
+  else if(t.dataset.cdt!=null){CP().cards[+t.dataset.cdt].dt=t.value;cardsEdited();}
+  else if(t.dataset.mf!=null){const [i,f]=t.dataset.mf.split(':');CP().cards[+i].man[f]=t.value;cardsEdited();}
+  else if(t.dataset.ctitle!=null){CP().cards[+t.dataset.ctitle].t=t.value.trim();cardsEdited();}
+  else if(t.dataset.mdisc!=null){S.models[+t.dataset.mdisc].disc=t.value;saveOp();render();}
+  else if(t.dataset.mw!=null){S.models[+t.dataset.mw].wman=+t.value>0?+t.value:null;saveOp();render();}
+  else if(t.id==='opCurve'){CP().curve=t.value;saveOp();render();}
+  else if(t.id==='pdisc'){const P=CP();P.disc=t.value;P.curve='disc:'+P.disc;P.auto=true;P.cards=null;saveOp();render();}
+  else if(t.id==='opFs'){S.op.fs=+t.value;saveOp();render();}
+  else if(t.id==='fileCmp'&&t.files[0]){loadCmp(t.files[0]);t.value='';}
+});
+function reanalyze(){analyzeAll();render();}
+for(const ev of ['dragover','dragenter'])document.addEventListener(ev,e=>{e.preventDefault();const d=$('#drop');if(d)d.classList.add('over');});
+for(const ev of ['dragleave','drop'])document.addEventListener(ev,e=>{const d=$('#drop');if(d)d.classList.remove('over');});
+document.addEventListener('drop',e=>{e.preventDefault();const fs=[...e.dataTransfer.files];if(!fs.length)return;
+  const ph=e.target.closest&&e.target.closest('.ph');
+  if(ph){setPhoto(ph.dataset.pg,+ph.dataset.slot,fs[0]);return;}
+  if(M&&S.tab==='comparar'&&e.shiftKey)loadCmp(fs[0]);else loadMain(fs.filter(f=>/\.(xml|mpp)$/i.test(f.name)),!!M&&S.tab==='onepage');});
+
+async function readModel(f){
+  if(/\.mpp$/i.test(f.name))throw new Error('Arquivos .mpp não são lidos diretamente. No MS Project use Arquivo › Salvar como › "XML do Project" e carregue o .xml.');
+  $('#loading').style.display='flex';
+  await new Promise(r=>setTimeout(r,30));
+  try{const m=build(parseMSP(await f.text()));m.file=f.name;return m;}
+  finally{$('#loading').style.display='none';}
+}
+async function loadMain(files,append){
+  try{
+    const ms=[];for(const f of [...files])ms.push(await readModel(f));
+    if(!ms.length)return;
+    const fresh=!append||!S.models.length;
+    if(fresh)S.models=[];
+    for(const m of ms)addModel(m);
+    if(fresh){loadOp();M=S.models[0];CMP=null;S.cutoff=sod(M.status||new Date());S.base='auto';S.tab=S.models.length>1?'onepage':'resumo';S.initCollapse=true;S.sort={};S.filter={};S.chk=null;
+      S.real=S.models.some(m=>m.leaves.some(t=>t.aw>0))?'work':'pct';if(S.real==='work')S.weight='work';}
+    applyMeta(ms);loadCards();analyzeAll();
+
+    render();
+  }catch(err){alert(err.message);}
+}
+async function loadCmp(f){
+  try{const m=await readModel(f);M.cmp=m;CMP=m;S.base=M.hasBase?'baseline':'compare';analyzeAll();render();}
+  catch(err){alert(err.message);}
+}
+render();
+</script>
+</body>
+</html>
