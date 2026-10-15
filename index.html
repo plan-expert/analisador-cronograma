@@ -166,7 +166,7 @@ const eod=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate(),23,59,59);
 const fd=d=>d?d.toLocaleDateString('pt-BR'):'';
 const nf=(v,dp=1)=>v==null||isNaN(v)?'':v.toLocaleString('pt-BR',{minimumFractionDigits:dp,maximumFractionDigits:dp});
 const dd=(a,b)=>Math.round((sod(a)-sod(b))/DAY);
-const hrs=s=>{const m=/PT(\d+)H(\d+)M(\d+)S/.exec(s||'');return m?(+m[1])+(+m[2])/60:0};
+const hrs=s=>{const m=/^-?P(?:(\d+)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/.exec((s||'').trim());return m?(+m[1]||0)*24+(+m[2]||0)+(+m[3]||0)/60+(+m[4]||0)/3600:0};
 const isoDay=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const frac=(a,b,d)=>{ if(!a||!b) return 0; if(d>=b) return 1; if(d<=a) return 0; return (d-a)/(b-a); };
 
@@ -197,7 +197,7 @@ function parseMSP(text){
         for(const c of el.children){
           const n=c.localName;
           if(n==='PredecessorLink'){const p={};for(const x of c.children)p[x.localName]=x.textContent;o.preds.push({uid:+p.PredecessorUID,type:+p.Type,lag:(+p.LinkLag||0)/10/60});}
-          else if(n==='Baseline'){const b={};for(const x of c.children)b[x.localName]=x.textContent;if(b.Number==='0'||o.base===null)o.base=b;}
+          else if(n==='Baseline'){const b={};for(const x of c.children)b[x.localName]=x.textContent;(o.bls=o.bls||{})[b.Number||'0']=b;}
           else if(n==='ExtendedAttribute'){let id,v;for(const x of c.children){if(x.localName==='FieldID')id=x.textContent;if(x.localName==='Value')v=x.textContent;}o.ext[id]=v;}
           else if(!c.children.length) o[n]=c.textContent;
         }
@@ -206,6 +206,10 @@ function parseMSP(text){
     }
   }
   if(!P.tasks.length) throw new Error('Nenhuma tarefa encontrada no arquivo.');
+  // usa só a "Linha de base" principal (Baseline 0), como o Project; se o arquivo não tiver, usa a de menor número
+  {const nums=new Set();for(const t of P.tasks)if(t.bls)for(const k in t.bls)nums.add(k);
+   const use=nums.has('0')?'0':[...nums].sort((x,y)=>+x-+y)[0];
+   P.baseNum=use;for(const t of P.tasks)t.base=(t.bls&&use!=null&&t.bls[use])||null;}
   return P;
 }
 
@@ -265,7 +269,7 @@ function gauge(o){
   const rm=o.rm!=null?`<button class="rm noprint" ${o.rmAttr||'data-cardrm'}="${o.rm}" title="Remover">×</button>`:'';
   return `<div class="gc"><div class="hd"><div class="ttl" ${o.scope!=null?`data-cardscope="${o.scope}"`:''} title="${esc(o.tip||o.title)}">${esc(o.title)}</div>
     <div class="bd" style="background:${col}">Aderência ${nf(ad,0)}%<br>${esc(o.label||'Término')} ${dt}</div></div>${rm}
-    <svg viewBox="0 0 280 128"><path d="${arc(100)}" fill="none" stroke="var(--grid)" stroke-width="${sw}"/>
+    <svg viewBox="0 -12 280 140"><path d="${arc(100)}" fill="none" stroke="var(--grid)" stroke-width="${sw}"/>
     <path d="${arc(real)}" fill="none" stroke="${col}" stroke-width="${sw}"/>${mk}
     <text x="${cx}" y="${cy-8}" text-anchor="middle" style="font-size:30px;font-weight:600">${nf(real,0)}%</text>
     <text class="mut" x="${cx-r}" y="${cy+14}" text-anchor="middle">0%</text><text class="mut" x="${cx+r}" y="${cy+14}" text-anchor="middle">100%</text></svg></div>`;
@@ -300,8 +304,14 @@ function analyze(){
   const w={dur:t=>t.ms?0:t.dur,work:t=>t.work,cost:t=>t.cost,eq:t=>t.ms?0:1};
   let wf=w[S.weight];
   if(M.leaves.reduce((s,t)=>s+wf(t),0)<=0)wf=w.eq;
-  for(const t of M.T){t.W=0;t.WR=0;t.WP=0;t.n=0;t.nLate=0;t.nCrit=0;t.nDone=0;t.min=null;t.max=null;}
+  for(const t of M.T){t.W=0;t.WR=0;t.WP=0;t.WPd=0;t.n=0;t.nLate=0;t.nCrit=0;t.nDone=0;t.min=null;t.max=null;}
   const cmpMap=CMP?CMP.byUid:null;
+  // peso do PREVISTO: com Peso=Trabalho e linha de base, o previsto é horas de base acumuladas ÷ horas de base totais (como no Project)
+  let wpBase=S.weight==='work'&&src==='baseline';
+  for(const t of M.leaves){t.wp=wpBase?(t.bs?t.bw:0):wf(t);t.hasTp=src==='baseline'&&t.tpB.length>0;}
+  if(wpBase&&!M.leaves.some(t=>t.wp>0)){wpBase=false;for(const t of M.leaves)t.wp=wf(t);}
+  // horas (ou peso) previstos até a data d: em modo base-de-trabalho usa as horas da base em fases de tempo, como o Project
+  const ph=(t,d,use,w)=>use?(t.hasTp?cumTP(t.tpB,d):(t.bs?t.bw*frac(t.ps,t.pf,d):0)):w*(t.useTpB?Math.min(1,cumTP(t.tpB,d)/t.bw):frac(t.ps,t.pf,d));
   const cumTP=(l,d)=>{let v=0;for(const x of l)v+=x.h*frac(x.s,x.f,d);return v;};
   for(const t of M.leaves){
     let bs=t.start,bf=t.finish,has=false;
@@ -320,25 +330,27 @@ function analyze(){
     t.lateS=!t.done&&t.pct===0&&t.start&&sod(t.start)<sod(S.cutoff);
     t.delay=t.lateF?dd(S.cutoff,t.finish):0;
     for(const a of t.path){
-      a.W+=t.wt;a.WR+=t.wt*t.rf;a.WP+=t.wt*t.plan;a.n++;
+      a.W+=t.wt;a.WR+=t.wt*t.rf;a.WP+=t.wp*t.plan;a.WPd+=t.wp;a.n++;
       if(t.lateF)a.nLate++;if(t.crit&&!t.done)a.nCrit++;if(t.done)a.nDone++;
       if(!a.min||t.start<a.min)a.min=t.start;if(!a.max||t.finish>a.max)a.max=t.finish;
     }
   }
   for(const t of M.T){
     if(t.leaf){t.real=t.rf*100;t.prev=t.plan*100;}
-    else if(t.W>0){t.real=t.WR/t.W*100;t.prev=t.WP/t.W*100;}
+    else if(t.W>0){t.real=t.WR/t.W*100;t.prev=t.WPd>0?t.WP/t.WPd*100:null;}
     else{t.real=t.pct;t.prev=null;}
   }
   const root=M.T.find(t=>t.lvl===0&&t.sum)||{W:0,WR:0,WP:0};
-  const W=M.leaves.reduce((s,t)=>s+t.wt,0)||1,WR=M.leaves.reduce((s,t)=>s+t.wt*t.rf,0),WP=M.leaves.reduce((s,t)=>s+t.wt*t.plan,0);
-  A={src,cut,W,real:WR/W*100,prev:WP/W*100,spi:WP>0?WR/WP:null};
+  const W=M.leaves.reduce((s,t)=>s+t.wt,0)||1,WR=M.leaves.reduce((s,t)=>s+t.wt*t.rf,0),WP=M.leaves.reduce((s,t)=>s+t.wp*t.plan,0),WPd=M.leaves.reduce((s,t)=>s+t.wp,0)||1;
+  A={src,cut,W,real:WR/W*100,prev:WP/WPd*100,spi:WP>0?(WR/W)/(WP/WPd):null};
   const node=M.scope!=null?M.byUid.get(M.scope):null;
   const SL=node?M.leaves.filter(t=>t.path.includes(node)):M.leaves;
   const rawW=SL.reduce((s,t)=>s+t.wt,0),fb=rawW<=0;
   for(const t of SL)t.wtc=fb?(t.ms?0:1):t.wt;
-  const Wc=SL.reduce((s,t)=>s+t.wtc,0)||1,WRc=SL.reduce((s,t)=>s+t.wtc*t.rf,0),WPc=SL.reduce((s,t)=>s+t.wtc*t.plan,0);
-  A.sc={fb,node,n:SL.length,W:Wc,real:WRc/Wc*100,prev:WPc/Wc*100,spi:WPc>0?WRc/WPc:null};
+  const wpOk=!fb&&SL.some(t=>t.wp>0);
+  for(const t of SL)t.wpc=wpOk?t.wp:t.wtc;
+  const Wc=SL.reduce((s,t)=>s+t.wtc,0)||1,Wp=SL.reduce((s,t)=>s+t.wpc,0)||1,WRc=SL.reduce((s,t)=>s+t.wtc*t.rf,0),WPc=SL.reduce((s,t)=>s+t.wpc*t.plan,0);
+  A.sc={fb,node,n:SL.length,W:Wc,real:WRc/Wc*100,prev:WPc/Wp*100,spi:WPc>0?(WRc/Wc)/(WPc/Wp):null};
   // curva S
   let d0=null,d1=null;
   for(const t of SL){for(const d of [t.start,t.finish,t.ps,t.pf,t.as,t.af]){if(!d)continue;if(!d0||d<d0)d0=d;if(!d1||d>d1)d1=d;}}
@@ -349,10 +361,10 @@ function analyze(){
   const cutIdx=ci<0?(sod(S.cutoff)<days[0]?-1:days.length-1):ci;
   const ends=days.map(eod);
   for(const t of SL){
-    if(t.wtc<=0)continue;
+    if(t.wtc<=0&&t.wpc<=0)continue;
     const a0=t.as||t.start,a1=t.af||cut;
     for(let i=0;i<days.length;i++){
-      plan[i]+=t.wtc*(t.useTpB?Math.min(1,cumTP(t.tpB,ends[i])/t.bw):frac(t.ps,t.pf,ends[i]));
+      plan[i]+=t.wpc*(t.useTpB?Math.min(1,cumTP(t.tpB,ends[i])/t.bw):frac(t.ps,t.pf,ends[i]));
     }
     for(let i=0;i<=cutIdx;i++){
       let v=0;
@@ -366,7 +378,7 @@ function analyze(){
       fc[i]=(fc[i]||0)+(t.wtc*t.rf)+(rem>0?rem*frac(f0,f1,ends[i]):0);
     }
   }
-  A.curve={days,plan:plan.map(v=>v/Wc*100),act:act.map(v=>v==null?null:v/Wc*100),fc:fc.map(v=>v==null?null:v/Wc*100),cutIdx};
+  A.curve={days,plan:plan.map(v=>v/Wp*100),act:act.map(v=>v==null?null:v/Wc*100),fc:fc.map(v=>v==null?null:v/Wc*100),cutIdx};
   // forecast: ajuste final em cutIdx para coincidir com realizado
   if(cutIdx>=0&&A.curve.act[cutIdx]!=null)A.curve.fc[cutIdx]=A.curve.act[cutIdx];
 }
@@ -889,10 +901,10 @@ function keyOf(t,g){
 function viewGrupos(){
   const keys=groupKeys();if(!keys.some(k=>k[0]===S.group))S.group='wbs1';
   const map=new Map();
-  for(const t of M.leaves){const k=keyOf(t,S.group);let g=map.get(k);if(!g){g={k,n:0,W:0,WR:0,WP:0,late:0,crit:0,done:0,min:null,max:null};map.set(k,g);}
-    g.n++;g.W+=t.wt;g.WR+=t.wt*t.rf;g.WP+=t.wt*t.plan;if(t.lateF)g.late++;if(t.crit&&!t.done)g.crit++;if(t.done)g.done++;
+  for(const t of M.leaves){const k=keyOf(t,S.group);let g=map.get(k);if(!g){g={k,n:0,W:0,WR:0,WP:0,WPd:0,late:0,crit:0,done:0,min:null,max:null};map.set(k,g);}
+    g.n++;g.W+=t.wt;g.WR+=t.wt*t.rf;g.WP+=t.wp*t.plan;g.WPd+=t.wp;if(t.lateF)g.late++;if(t.crit&&!t.done)g.crit++;if(t.done)g.done++;
     if(!g.min||t.start<g.min)g.min=t.start;if(!g.max||t.finish>g.max)g.max=t.finish;}
-  const rows=[...map.values()].map(g=>({...g,real:g.W?g.WR/g.W*100:null,prev:g.W?g.WP/g.W*100:null,peso:g.W/A.W*100}));
+  const rows=[...map.values()].map(g=>({...g,real:g.W?g.WR/g.W*100:null,prev:g.WPd?g.WP/g.WPd*100:null,peso:g.W/A.W*100}));
   return `<div class="tools"><label class="ctl">Agrupar por <select id="grpSel">${keys.map(k=>`<option value="${k[0]}" ${S.group===k[0]?'selected':''}>${esc(k[1])}</option>`).join('')}</select></label></div>
   ${tbl('grupos',[
     {h:'Grupo',v:r=>r.k,wrap:1},{h:'Tarefas',t:'n',dp:0,v:r=>r.n},{h:'Peso %',t:'n',v:r=>r.peso},{h:'Real %',t:'n',v:r=>r.real},{h:'Prev. %',t:'n',v:r=>r.prev},
