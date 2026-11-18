@@ -99,7 +99,7 @@ svg text{fill:var(--mute);font-size:11px}
 .stage.cov{grid-template-rows:46px 1fr 40px}.covph{border-radius:0;border:0}.stage.cov .ph img{object-fit:cover}.sf{justify-content:center}.sf .stt span{display:block;text-align:center;font-weight:700;font-size:18px}
 .dgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:minmax(0,1fr) minmax(0,1fr) minmax(0,2.3fr);gap:8px;min-height:0}
 .dgrid>*{min-height:0;overflow:hidden}.cell{display:flex}.cell>.gc{width:100%}
-.dpics{flex:1;min-height:0;display:grid;gap:6px;padding:6px}.dpics .ph{min-height:0}
+.dpics{flex:1;min-height:0;display:grid;gap:6px;padding:6px;grid-auto-rows:minmax(0,1fr)}.dpics .ph{min-height:0}
 .sbody{display:grid;grid-template-columns:780px 1fr;gap:8px;min-height:0}
 .sl{display:grid;grid-template-rows:380px 1fr;gap:8px;min-height:0}
 .sg{display:grid;gap:8px;min-height:0;overflow:hidden}
@@ -114,10 +114,12 @@ svg text{fill:var(--mute);font-size:11px}
 .lg2 span::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;background:var(--c)}
 .sr{display:grid;gap:8px;min-height:0}
 .ph{position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#f3f5f8;cursor:pointer;min-height:0}
-.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;z-index:1}
+.ph.has::before{content:"";position:absolute;inset:-24px;background:var(--bg) center/cover no-repeat;filter:blur(14px) brightness(.93)}
+body.pfill .ph img{object-fit:cover}
 .ph .phh{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#8a94a6;font-size:14px;text-align:center;padding:10px}
 .ph.has .phh{display:none}.ph.over{outline:3px solid #2f8cf0}
-.ph .prm{position:absolute;top:6px;right:6px;display:none;background:#fff}
+.ph .prm{position:absolute;top:6px;right:6px;display:none;background:#fff;z-index:3}
 .ph.has:hover .prm{display:block}
 .stage .gc{height:100%;display:flex;flex-direction:column;padding:8px 10px 4px}
 .stage .gc svg{flex:1;min-height:0;width:100%}
@@ -286,7 +288,7 @@ function viewCards(){
   <div class="note">Número grande e preenchimento = realizado. Marca azul = previsto na ${baseLabel()}. Aderência = realizado ÷ previsto. Clique no título para ver a curva S daquela estrutura.</div>
   <div class="gcards">${S.cards.map(u=>M.byUid.get(u)).filter(Boolean).map(t=>gauge({title:t.lvl===0?t.name:t.wbs+' '+t.name,tip:t.wbs+' '+t.name,real:t.real,prev:t.prev,max:t.max,rm:t.uid,scope:t.uid})).join('')||'<div class="mute">Nenhum card. Escolha uma estrutura e clique em Adicionar.</div>'}</div>`;
 }
-const S={fl:{ini:{a:'',b:''},ter:{a:'',b:''},q:'',c:new Set()},models:[],opCards:null,opCurve:'all',op:{title:'',week:'',obs:'Pontos críticos:\n\nAtividades concluídas:\n\nEm andamento:\n\nPróximos passos:\n',nPhotos:5,fs:13},cards:[],thr:{ok:95,warn:85},tab:'resumo',cutoff:null,weight:'dur',real:'pct',base:'auto',late:'all',slackMax:10,critMode:'crit',
+const S={photoFit:'fit',fl:{ini:{a:'',b:''},ter:{a:'',b:''},q:'',c:new Set()},models:[],opCards:null,opCurve:'all',op:{title:'',week:'',obs:'Pontos críticos:\n\nAtividades concluídas:\n\nEm andamento:\n\nPróximos passos:\n',nPhotos:5,fs:13},cards:[],thr:{ok:95,warn:85},tab:'resumo',cutoff:null,weight:'dur',real:'pct',base:'auto',late:'all',slackMax:10,critMode:'crit',
   group:'wbs1',msFilter:'all',chk:null,collapsed:new Set(),initCollapse:true,sort:{},filter:{},treeQ:''};
 
 /* ============ análise ============ */
@@ -312,7 +314,8 @@ function analyze(){
   if(wpBase&&!M.leaves.some(t=>t.wp>0)){wpBase=false;for(const t of M.leaves)t.wp=wf(t);}
   // horas (ou peso) previstos até a data d: em modo base-de-trabalho usa as horas da base em fases de tempo, como o Project
   const ph=(t,d,use,w)=>use?(t.hasTp?cumTP(t.tpB,d):(t.bs?t.bw*frac(t.ps,t.pf,d):0)):w*(t.useTpB?Math.min(1,cumTP(t.tpB,d)/t.bw):frac(t.ps,t.pf,d));
-  const cumTP=(l,d)=>{let v=0;for(const x of l)v+=x.h*frac(x.s,x.f,d);return v;};
+  // períodos de até ~1 dia são "baldes diários" do Project: contam inteiros a partir do dia em que começam (igual à visão Uso da Tarefa); períodos longos são distribuídos linearmente
+  const cumTP=(l,d)=>{let v=0;for(const x of l)v+=x.h*((x.f-x.s)<=93600000?(x.s<=d?1:0):frac(x.s,x.f,d));return v;};
   for(const t of M.leaves){
     let bs=t.start,bf=t.finish,has=false;
     if(src==='baseline'&&t.bs){bs=t.bs;bf=t.bf;has=true;}
@@ -545,7 +548,7 @@ function aggCurve(ms){
 /* ----- persistência (onepage) ----- */
 function saveOp(){try{
   const meta={};for(const m of S.models)meta[m.key]={name:m.name,disc:m.disc,wman:m.wman};
-  localStorage.setItem('ac:op',JSON.stringify({v:2,fs:S.op.fs,week:S.week||'',pages:S.pages,meta,thr:S.thr}));}catch(e){}}
+  localStorage.setItem('ac:op',JSON.stringify({v:2,fs:S.op.fs,week:S.week||'',pages:S.pages,meta,thr:S.thr,pf:S.photoFit}));}catch(e){}}
 function loadOp(){let b=null;try{b=JSON.parse(localStorage.getItem('ac:op'));}catch(e){}
   S.pages=null;S._legacyCards=null;S._legacyCurve=null;S.week='';
   if(b){
@@ -553,7 +556,7 @@ function loadOp(){let b=null;try{b=JSON.parse(localStorage.getItem('ac:op'));}ca
     if(b.fs)S.op.fs=b.fs;
     if(b.pages&&b.pages.length)S.pages=b.pages;
     else{Object.assign(S.op,b.op||{});S._legacyCards=b.cards||null;S._legacyCurve=b.curve||null;}
-    if(b.thr)S.thr=b.thr;S._meta=b.meta||{};}
+    if(b.thr)S.thr=b.thr;S._meta=b.meta||{};if(b.pf)S.photoFit=b.pf;}
   else S._meta={};
 }
 function applyMeta(ms){for(const m of ms){const x=S._meta&&S._meta[m.key];if(x){m.name=x.name||m.name;m.disc=x.disc||m.disc;m.wman=x.wman||null;}}}
@@ -592,14 +595,14 @@ async function exportReport(){
   const photos={};
   for(const P of S.pages){const n=P.type==='cover'?1:9;for(let i=0;i<n;i++){const k=phKey(P.id,i),u=await idbGet(k);if(u)photos[k]=u;}}
   const meta={};for(const m of S.models)meta[m.key]={name:m.name,disc:m.disc,wman:m.wman};
-  const blob=new Blob([JSON.stringify({app:'analisador-cronograma',v:2,fs:S.op.fs,week:S.week||'',pages:S.pages,meta,thr:S.thr,photos})],{type:'application/json'});
+  const blob=new Blob([JSON.stringify({app:'analisador-cronograma',v:2,fs:S.op.fs,week:S.week||'',pages:S.pages,meta,thr:S.thr,pf:S.photoFit,photos})],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='onepage-'+isoDay(new Date())+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),3000);
 }
 async function importReport(f){
   try{
     const b=JSON.parse(await f.text());
     if(b.app!=='analisador-cronograma'||!b.pages)throw new Error('Este arquivo não é um backup do Onepage.');
-    S.pages=b.pages;S.week=b.week||'';if(b.fs)S.op.fs=b.fs;if(b.thr)S.thr=b.thr;S._meta=b.meta||{};
+    S.pages=b.pages;S.week=b.week||'';if(b.fs)S.op.fs=b.fs;if(b.thr)S.thr=b.thr;S.photoFit=b.pf||'fit';S._meta=b.meta||{};
     applyMeta(S.models);
     for(const [k,u] of Object.entries(b.photos||{}))await idbSet(k,u);
     saveOp();analyzeAll();render();
@@ -615,7 +618,7 @@ const idbDel=k=>{delete MEM[k];return idb().then(db=>new Promise(res=>{const tx=
 const phKey=(pg,i)=>pg==='geral'?'ph'+i:'ph:'+pg+':'+i;
 async function shrink(f){const bm=await createImageBitmap(f);const k=Math.min(1,1600/Math.max(bm.width,bm.height));
   const c=document.createElement('canvas');c.width=Math.round(bm.width*k);c.height=Math.round(bm.height*k);c.getContext('2d').drawImage(bm,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.85);}
-function showPhoto(pg,i,url){const el=document.querySelector(`.ph[data-pg="${pg}"][data-slot="${i}"]`);if(!el)return;const img=el.querySelector('img');img.src=url||'';img.style.display=url?'block':'none';el.classList.toggle('has',!!url);}
+function showPhoto(pg,i,url){const el=document.querySelector(`.ph[data-pg="${pg}"][data-slot="${i}"]`);if(!el)return;const img=el.querySelector('img');img.src=url||'';img.style.display=url?'block':'none';el.style.setProperty('--bg',url?`url("${url}")`:'none');el.classList.toggle('has',!!url);}
 async function setPhoto(pg,i,file){if(!file||!/^image\//.test(file.type)){alert('Escolha um arquivo de imagem.');return;}
   try{const url=await shrink(file);await idbSet(phKey(pg,i),url);showPhoto(pg,i,url);}catch(e){alert('Não consegui ler a imagem.');}}
 async function fillPhotos(){for(const P of S.pages){const n=P.type==='cover'?1:P.nPhotos;for(let i=0;i<n;i++){const u=await idbGet(phKey(P.id,i));showPhoto(P.id,i,u);}}}
@@ -660,6 +663,7 @@ function pageStage(P){
     </div></div>`;
 }
 function viewOnepage(){
+  document.body.classList.toggle('pfill',S.photoFit==='fill');
   normPages();
   const P=CP(),O=S.op,opts=opOptions();
   const pgtabs=`<div class="pgtabs noprint">${S.pages.map(p=>`<button data-pgsel="${p.id}" class="${p.id===P.id?'on':''}">${esc(p.name)}</button>`).join('')}</div>`;
@@ -692,6 +696,7 @@ function viewOnepage(){
     <label class="ctl">Fotos <button id="phMinus">−</button><b>${P.nPhotos}</b><button id="phPlus">+</button></label>`}
     ${P.type==='disc'?`<label class="ctl">Disciplina da página <select id="pdisc">${DISC.map(d=>`<option ${d===P.disc?'selected':''}>${d}</option>`).join('')}</select></label><button id="pdef" title="Volta aos cards automáticos">Cards padrão</button>`:''}
     <label class="ctl">Semana (todas as páginas) <input id="weekIn" value="${esc(weekStr())}" style="width:250px"></label><button id="weekAuto" title="Volta a calcular pela data de corte">Automática</button>
+    <label class="ctl">Ajuste das fotos <select id="phFit"><option value="fit" ${S.photoFit==='fit'?'selected':''}>Inteira (sem cortar)</option><option value="fill" ${S.photoFit==='fill'?'selected':''}>Preencher (corta)</option></select></label>
     <label class="ctl">Fonte dos textos <select id="opFs">${[11,12,13,14,15,16].map(v=>`<option ${v===O.fs?'selected':''}>${v}</option>`).join('')}</select></label>
     <label class="ctl"><span class="sw" style="background:${TH_COL.ok}"></span>≥ <input type="number" id="thrOk" value="${S.thr.ok}" style="width:56px">%</label>
     <label class="ctl"><span class="sw" style="background:${TH_COL.warn}"></span>≥ <input type="number" id="thrWarn" value="${S.thr.warn}" style="width:56px">%</label>
@@ -1096,6 +1101,7 @@ document.addEventListener('change',e=>{
   else if(t.dataset.mw!=null){S.models[+t.dataset.mw].wman=+t.value>0?+t.value:null;saveOp();render();}
   else if(t.id==='opCurve'){CP().curve=t.value;saveOp();render();}
   else if(t.id==='pdisc'){const P=CP();P.disc=t.value;P.curve='disc:'+P.disc;P.auto=true;P.cards=null;saveOp();render();}
+  else if(t.id==='phFit'){S.photoFit=t.value;saveOp();render();}
   else if(t.id==='opFs'){S.op.fs=+t.value;saveOp();render();}
   else if(t.id==='fileCmp'&&t.files[0]){loadCmp(t.files[0]);t.value='';}
 });
